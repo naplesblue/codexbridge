@@ -170,6 +170,7 @@ Standard mode exposes:
 - `task_plan` — create a compact execution checklist with command policies and write approval requirements.
 - `task_verify` — run one policy-checked verification command and journal the result.
 - `task_report` — summarize current task state with git changes, diff stats, and recent operation events.
+- `task_resume` — resume the workspace's in-progress task in a new session: returns the saved goal/plan plus git-derived progress and journal events since it started.
 - `bash` — run allowlisted shell commands in the workspace. Controlled by `CODEXBRIDGE_BASH_MODE`.
 - `ssh_profiles` — list configured remote SSH profiles with identity paths redacted.
 - `ssh_exec` — run or dry-run one non-interactive command on a configured SSH profile. Controlled by `CODEXBRIDGE_SSH_MODE`.
@@ -1145,6 +1146,17 @@ For parallel work, run a separate CodexBridge server for the other repo, port, t
 ```bash
 codexbridge start --root /path/to/other/repo --port 8788 --no-bash
 ```
+
+## Task resume (continue after a dropped session)
+
+When a coding session ends mid-task (for example Codex quota runs out), CodexBridge can pick the work back up in a fresh ChatGPT session.
+
+- Call `task_plan` with `plan_steps` (your actual implementation steps). CodexBridge saves the goal and plan to `.ai-bridge/current-task.json` and returns a `task_id`.
+- Work as usual — `preview_change_set` / `apply_change_set` / `task_verify` are journaled.
+- In a new session, `open_current_workspace` and `task_brief` show the active task. Call `task_resume` to get the saved goal, the plan, what git shows is already changed, and the journal events since the task started.
+- When done, call `task_report` with `complete: true` to archive the task to `.ai-bridge/tasks/<id>.json`.
+
+One active task per workspace; starting a new `task_plan` (with `plan_steps`) archives the previous one as `abandoned`.
 
 ## Safety boundaries
 

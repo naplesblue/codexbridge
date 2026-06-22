@@ -124,5 +124,6 @@ CodexBridge blocks common sensitive paths by default:
 - safe bash commands through a shared command policy; unlisted, destructive, network, shell-expansion, and file-reader commands are denied by default
 - transactional change sets with preview, base-hash validation, and rollback for files already written if a later write fails
 - a bounded `.ai-bridge/operation-journal.jsonl` audit trail for successful write/edit/bash/change-set operations
+- Task records (`.ai-bridge/current-task.json` and `.ai-bridge/tasks/`) store the goal and plan you give `task_plan`. They are written through the same path guard as the operation journal and never leave the workspace; do not put secrets in task goals or plan steps.
 
 These guards reduce risk. They are not an OS sandbox.

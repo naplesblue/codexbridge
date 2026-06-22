@@ -409,6 +409,17 @@ codexbridge start --tool-mode full --codex-sessions read
 codexbridge start --mode handoff --no-bash
 ```
 
+## 任务续接（会话中断后继续）
+
+当一次编码会话中途结束（比如 Codex 额度用完），CodexBridge 可以让新的 ChatGPT 会话接着干。
+
+- 调用 `task_plan` 时带上 `plan_steps`（你真实的实现步骤），CodexBridge 会把目标和计划存到 `.ai-bridge/current-task.json` 并返回 `task_id`。
+- 照常工作——`preview_change_set` / `apply_change_set` / `task_verify` 都会进 journal。
+- 新会话里，`open_current_workspace` 和 `task_brief` 会提示有未完成任务；调用 `task_resume` 即可拿到原目标、原计划、git 里已改了什么，以及任务开始后的 journal 事件。
+- 完成后调用 `task_report` 并带 `complete: true`，任务会归档到 `.ai-bridge/tasks/<id>.json`。
+
+每个 workspace 同时只有一个活动任务；再次用 `task_plan`（带 `plan_steps`）开新任务时，上一个会被归档为 `abandoned`。
+
 ## 常用命令
 
 ```bash
