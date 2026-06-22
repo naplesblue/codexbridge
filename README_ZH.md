@@ -1,28 +1,28 @@
 <p align="center">
-  <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro logo">
+  <img src="docs/favicon.svg" width="72" height="72" alt="CodexBridge logo">
 </p>
 
-<h1 align="center">CodexPro</h1>
+<h1 align="center">CodexBridge</h1>
 
 <p align="center">
   让 ChatGPT Web 看见你的本地仓库，并像本地代码代理一样工作。
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/codexpro"><img alt="npm" src="https://img.shields.io/npm/v/codexpro?style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/rebel0789/codexpro/ci.yml?branch=main&style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/rebel0789/codexpro?style=flat-square"></a>
-  <a href="https://rebel0789.github.io/codexpro/zh.html"><img alt="中文站点" src="https://img.shields.io/badge/site-%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-67e8f9?style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/codexbridge"><img alt="npm" src="https://img.shields.io/npm/v/codexbridge?style=flat-square"></a>
+  <a href="https://github.com/naplesblue/codexbridge/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/naplesblue/codexbridge/ci.yml?branch=main&style=flat-square"></a>
+  <a href="https://github.com/naplesblue/codexbridge/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/naplesblue/codexbridge?style=flat-square"></a>
+  <a href="https://naplesblue.github.io/codexbridge/zh.html"><img alt="中文站点" src="https://img.shields.io/badge/site-%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-67e8f9?style=flat-square"></a>
 </p>
 
 <p align="center">
   <a href="README.md">English</a>
   ·
-  <a href="https://rebel0789.github.io/codexpro/zh.html">中文网站</a>
+  <a href="https://naplesblue.github.io/codexbridge/zh.html">中文网站</a>
   ·
-  <a href="https://github.com/rebel0789/codexpro">GitHub 点星</a>
+  <a href="https://github.com/naplesblue/codexbridge">GitHub 点星</a>
   ·
-  <a href="https://www.npmjs.com/package/codexpro">npm</a>
+  <a href="https://www.npmjs.com/package/codexbridge">npm</a>
   ·
   <a href="DOMAIN_SETUP.md">稳定 URL 指南</a>
   ·
@@ -33,38 +33,40 @@
 
 ## 安装
 
-CodexPro 需要 Node.js 20+，以及能使用 Apps / Developer Mode 的 ChatGPT Plus 或 Pro 账号。
+CodexBridge 需要 Node.js 20+，以及能使用 Apps / Developer Mode 的 ChatGPT Plus 或 Pro 账号。
 
 先安装 CLI：
 
 ```bash
-npm install -g codexpro
+npm install -g codexbridge
 ```
 
 进入你想让 ChatGPT 工作的仓库，然后运行 setup：
 
 ```bash
 cd /path/to/your/repo
-codexpro setup
+codexbridge setup
 ```
 
-CodexPro 会自动复制 ChatGPT Server URL。到 ChatGPT 打开 `Settings -> Apps -> Advanced settings -> Create app`，粘贴这个 URL，并选择 `Authentication: No Authentication / None`。
+CodexBridge 会自动复制 ChatGPT Server URL。到 ChatGPT 打开 `Settings -> Apps -> Advanced settings -> Create app`，粘贴这个 URL，并选择 `Authentication: No Authentication / None`。
 
 以后同一个仓库日常启动只需要：
 
 ```bash
-codexpro start
+codexbridge start
 ```
 
-CodexPro 把 ChatGPT Developer Mode 变成本地仓库的 MCP 代码代理。ChatGPT 可以读取文件、搜索代码、查看 git 状态、写入或精确编辑文件，并运行安全范围内的验证命令。
+CodexBridge 把 ChatGPT Developer Mode 变成本地仓库的 MCP 代码代理。ChatGPT 可以读取文件、搜索代码、查看 git 状态、写入或精确编辑文件，并运行安全范围内的验证命令。
 
-CodexPro 不是速率限制绕过工具。它不会绕过、提升、合并、转售或修改 ChatGPT、Codex、OpenAI 或第三方模型的限制。它只是通过官方 Developer Mode / MCP App 路径，把你自己的 ChatGPT 会话连接到你自己的本地仓库。
+CodexBridge 不是速率限制绕过工具。它不会绕过、提升、合并、转售或修改 ChatGPT、Codex、OpenAI 或第三方模型的限制。它只是通过官方 Developer Mode / MCP App 路径，把你自己的 ChatGPT 会话连接到你自己的本地仓库。
 
-如果 Codex 当前工作流暂时不可用，而你的 ChatGPT 页面仍然可用，CodexPro 可以让你继续在同一个本地仓库上工作。反过来也一样：ChatGPT 负责高上下文规划，Codex、OpenCode、Pi 或其他本地执行器负责终端里的实际执行。
+CodexBridge 起源于 CodexPro fork，现在作为本地化的独立 fork 维护，重点面向 ChatGPT 替代 Codex 执行中小代码任务的工作流。
+
+如果 Codex 当前工作流暂时不可用，而你的 ChatGPT 页面仍然可用，CodexBridge 可以让你继续在同一个本地仓库上工作。反过来也一样：ChatGPT 负责高上下文规划，Codex、OpenCode、Pi 或其他本地执行器负责终端里的实际执行。
 
 ## 适合谁
 
-CodexPro 适合已经使用 ChatGPT Plus 或 Pro 做开发的人：
+CodexBridge 适合已经使用 ChatGPT Plus 或 Pro 做开发的人：
 
 - 想让 ChatGPT Web 直接读取本地代码，而不是反复复制文件片段。
 - 想把 `AGENTS.md`、`.ai-bridge`、git diff、源码文件这些 Codex 风格上下文给 ChatGPT。
@@ -72,7 +74,7 @@ CodexPro 适合已经使用 ChatGPT Plus 或 Pro 做开发的人：
 - 想在某些模型不能调用工具时，导出一个持久上下文包给它做规划。
 - 想把 ChatGPT 的计划交给 Codex、OpenCode、Pi 或自定义本地代理执行。
 
-当前测试显示，ChatGPT Free / Go 账号不暴露 CodexPro 需要的 Apps / Developer Mode 创建流程。推荐使用 ChatGPT Plus 或 Pro。
+当前测试显示，ChatGPT Free / Go 账号不暴露 CodexBridge 需要的 Apps / Developer Mode 创建流程。推荐使用 ChatGPT Plus 或 Pro。
 
 ## 它能做什么
 
@@ -98,21 +100,21 @@ ChatGPT Web 可以操作：
   ChatGPT 回看执行结果和 diff
 ```
 
-默认 `CODEXPRO_TOOL_MODE=standard`，只暴露常用编码循环、`codexpro_self_test`、`show_changes`、上下文导出和 handoff。演示时可以用 `--tool-mode minimal`，需要完整兼容工具时用 `--tool-mode full`。
+默认 `CODEXBRIDGE_TOOL_MODE=standard`，只暴露常用编码循环、`codexbridge_self_test`、`show_changes`、上下文导出和 handoff。演示时可以用 `--tool-mode minimal`，需要完整兼容工具时用 `--tool-mode full`。
 
-默认工具数量较少是故意的：ChatGPT 面对少量高信号工具时更稳定。workspace open 仍会发现已安装的 user/plugin skills，并可用 `load_skill` 按名称、source 和显示出的 path 加载需要的 `SKILL.md`；如果仍有重名匹配，CodexPro 会报歧义错误，不会随便选一个，也不会把几十个 skill 变成单独 action。
+默认工具数量较少是故意的：ChatGPT 面对少量高信号工具时更稳定。workspace open 仍会发现已安装的 user/plugin skills，并可用 `load_skill` 按名称、source 和显示出的 path 加载需要的 `SKILL.md`；如果仍有重名匹配，CodexBridge 会报歧义错误，不会随便选一个，也不会把几十个 skill 变成单独 action。
 
-ChatGPT 里每个 CodexPro 工具都可以显示紧凑 v9 卡片：server config、自测、workspace 摘要、读写 diff、bash 验证、git/tree/search/context 和 handoff/export 都有结构化视图。git、skills、tree、terminal 输出、context 和 raw diff 默认折叠或截断，避免在聊天里刷出大段原始数据。`CODEXPRO_WIDGET_DOMAIN` 用于设置 ChatGPT widget iframe 的专用 HTTPS origin，正式提交 app 前应换成你控制的独立域名。
+ChatGPT 里每个 CodexBridge 工具都可以显示紧凑 v9 卡片：server config、自测、workspace 摘要、读写 diff、bash 验证、git/tree/search/context 和 handoff/export 都有结构化视图。git、skills、tree、terminal 输出、context 和 raw diff 默认折叠或截断，避免在聊天里刷出大段原始数据。`CODEXBRIDGE_WIDGET_DOMAIN` 用于设置 ChatGPT widget iframe 的专用 HTTPS origin，正式提交 app 前应换成你控制的独立域名。
 
 ## 其他启动方式
 
 不想全局安装时，也可以用：
 
 ```bash
-npx codexpro@latest start --root /absolute/path/to/your/repo
+npx codexbridge@latest start --root /absolute/path/to/your/repo
 ```
 
-但普通用户更推荐全局安装，这样命令就是固定的 `codexpro setup` 和 `codexpro start`。
+但普通用户更推荐全局安装，这样命令就是固定的 `codexbridge setup` 和 `codexbridge start`。
 
 ## ChatGPT 中的 App 设置
 
@@ -127,21 +129,21 @@ ChatGPT Settings
 -> Create app
 ```
 
-保留 CSP 开启。CodexPro 的卡片和小组件就是按 CSP 开启的路径设计的，不需要远程脚本、外部字体、iframe 或第三方图片。
+保留 CSP 开启。CodexBridge 的卡片和小组件就是按 CSP 开启的路径设计的，不需要远程脚本、外部字体、iframe 或第三方图片。
 
 在 Create App 页面填写：
 
 ```text
-Name: CodexPro
+Name: CodexBridge
 Description: Local workspace bridge for ChatGPT coding
 Connection: Server URL
-Server URL: 粘贴 CodexPro 自动复制的 URL
+Server URL: 粘贴 CodexBridge 自动复制的 URL
 Authentication: No Authentication / None
 ```
 
-复制的 Server URL 已经包含私有 `codexpro_token`。不要单独粘贴 token，除非你的 ChatGPT UI 明确支持自定义 header。
+复制的 Server URL 已经包含私有 `codexbridge_token`。不要单独粘贴 token，除非你的 ChatGPT UI 明确支持自定义 header。
 
-保持终端里的 CodexPro 进程运行。你停止它之后，ChatGPT 就无法继续连接本地仓库。Cloudflare quick tunnel 的 URL 也会失效。
+保持终端里的 CodexBridge 进程运行。你停止它之后，ChatGPT 就无法继续连接本地仓库。Cloudflare quick tunnel 的 URL 也会失效。
 
 ## 三种主要模式
 
@@ -150,7 +152,7 @@ Authentication: No Authentication / None
 默认模式。ChatGPT 可以在工作区内读取、搜索、写入、精确编辑文件，并运行安全验证命令。
 
 ```bash
-codexpro start
+codexbridge start
 ```
 
 适合小改动、文档更新、定位 bug、查看 diff、跑 lint/test/build。
@@ -158,13 +160,13 @@ codexpro start
 如果你正在另一个 Codex 会话里工作，不希望 ChatGPT 触发任何 shell 命令，用：
 
 ```bash
-codexpro start --no-bash
+codexbridge start --no-bash
 ```
 
-如果想保留 bash，但要求 ChatGPT 明确命中你启动的这个 CodexPro 终端会话标签，用：
+如果想保留 bash，但要求 ChatGPT 明确命中你启动的这个 CodexBridge 终端会话标签，用：
 
 ```bash
-codexpro start --bash-session main --require-bash-session
+codexbridge start --bash-session main --require-bash-session
 ```
 
 开启后，`bash` 工具调用必须带上 `session_id: "main"` 才会执行。
@@ -180,16 +182,16 @@ codexpro start --bash-session main --require-bash-session
 然后你在本地终端决定是否执行：
 
 ```bash
-codexpro execute-handoff --agent opencode --model provider/model --dry-run
-codexpro execute-handoff --agent opencode --model provider/model
+codexbridge execute-handoff --agent opencode --model provider/model --dry-run
+codexbridge execute-handoff --agent opencode --model provider/model
 ```
 
 也可以启动监听器，让本地终端在计划变更后执行：
 
 ```bash
-codexpro start --mode handoff
-codexpro start --mode handoff --no-bash
-codexpro watch-handoff --agent opencode --model provider/model --yes
+codexbridge start --mode handoff
+codexbridge start --mode handoff --no-bash
+codexbridge watch-handoff --agent opencode --model provider/model --yes
 ```
 
 执行结果会写回：
@@ -204,12 +206,12 @@ codexpro watch-handoff --agent opencode --model provider/model --yes
 
 ### 3. Pro context fallback
 
-有些 ChatGPT 模型或产品界面不能直接调用 Developer Mode Apps、连接器或 MCP 工具。即使同一个 Plus/Pro 账号可以创建 CodexPro app，某个具体模型界面仍然可能没有工具调用能力。
+有些 ChatGPT 模型或产品界面不能直接调用 Developer Mode Apps、连接器或 MCP 工具。即使同一个 Plus/Pro 账号可以创建 CodexBridge app，某个具体模型界面仍然可能没有工具调用能力。
 
 这时不要强行让它调用工具。先导出一个持久上下文包：
 
 ```bash
-codexpro pro-bundle --root /absolute/path/to/your/repo --copy
+codexbridge pro-bundle --root /absolute/path/to/your/repo --copy
 ```
 
 它会写入：
@@ -221,12 +223,12 @@ codexpro pro-bundle --root /absolute/path/to/your/repo --copy
 把这个上下文粘贴给不能调用工具的模型，让它产出窄范围实现计划。然后保存计划并应用：
 
 ```bash
-codexpro pro-apply --root /absolute/path/to/your/repo --file plan.md
+codexbridge pro-apply --root /absolute/path/to/your/repo --file plan.md
 ```
 
 这会写入 `.ai-bridge/current-plan.md`，再交给 Codex、OpenCode、Pi 或自定义本地代理执行。
 
-如果你的 ChatGPT 账号已经在 Web 产品里提供 GPT-5.5 或更强模型，并且该模型界面可以调用 Developer Mode Apps，CodexPro 可以让它通过 MCP 使用本地仓库工具。CodexPro 不提供、不代理、不转售、也不解锁模型。
+如果你的 ChatGPT 账号已经在 Web 产品里提供 GPT-5.5 或更强模型，并且该模型界面可以调用 Developer Mode Apps，CodexBridge 可以让它通过 MCP 使用本地仓库工具。CodexBridge 不提供、不代理、不转售、也不解锁模型。
 
 ## 稳定 URL 怎么选
 
@@ -243,7 +245,7 @@ Cloudflare named tunnel   适合已有自定义域名的用户。
 最适合录 demo 或临时试用：
 
 ```bash
-codexpro start
+codexbridge start
 ```
 
 缺点很明确：quick tunnel 的 URL 每次重启都会变。如果你把 quick URL 放进 ChatGPT App，下一次启动时需要重新编辑 ChatGPT App 的 Server URL。
@@ -262,16 +264,16 @@ your-name.ngrok-free.dev
 ngrok config add-authtoken YOUR_NGROK_TOKEN
 ```
 
-保存到 CodexPro：
+保存到 CodexBridge：
 
 ```bash
-codexpro settings set --tunnel ngrok --hostname your-name.ngrok-free.dev
+codexbridge settings set --tunnel ngrok --hostname your-name.ngrok-free.dev
 ```
 
 以后启动：
 
 ```bash
-codexpro start
+codexbridge start
 ```
 
 ChatGPT 里的 Server URL 可以保持不变。
@@ -282,21 +284,21 @@ ChatGPT 里的 Server URL 可以保持不变。
 
 ```bash
 cloudflared tunnel login
-cloudflared tunnel create codexpro
-cloudflared tunnel route dns codexpro codexpro.example.com
+cloudflared tunnel create codexbridge
+cloudflared tunnel route dns codexbridge codexbridge.example.com
 ```
 
 之后日常启动：
 
 ```bash
-codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
+codexbridge stable --hostname codexbridge.example.com --tunnel-name codexbridge
 ```
 
 更多域名细节见 [DOMAIN_SETUP.md](DOMAIN_SETUP.md)。
 
 ## Codex 风格上下文
 
-CodexPro 不读取 Codex 的隐藏运行时记忆。它给 ChatGPT 的是显式工作区上下文：
+CodexBridge 不读取 Codex 的隐藏运行时记忆。它给 ChatGPT 的是显式工作区上下文：
 
 ```text
 open_current_workspace  当前 root、安全模式、AGENTS 状态、git 状态
@@ -336,7 +338,7 @@ git status
 推荐流程：
 
 ```text
-先调用 server_config 和 codexpro_self_test
+先调用 server_config 和 codexbridge_self_test
 如果 self-test 失败，先停下来报告失败项
 先调用 open_current_workspace，include_tree=false
 再调用 task_brief，target_path 指向要改的文件，include_diff=false
@@ -350,11 +352,11 @@ git status
 
 ## 安全边界
 
-CodexPro 是本地开发桥，不是操作系统级沙箱。
+CodexBridge 是本地开发桥，不是操作系统级沙箱。
 
 默认安全行为：
 
-- 公网 tunnel 默认需要私有 CodexPro token。
+- 公网 tunnel 默认需要私有 CodexBridge token。
 - 写入限制在配置的工作区 root 内。
 - 常见敏感路径会被拒绝：`.env`、私钥、`.git`、`node_modules`、生成目录、缓存目录。
 - symlink 逃逸会被阻止。
@@ -363,36 +365,36 @@ CodexPro 是本地开发桥，不是操作系统级沙箱。
 - `preview_change_set` 可以接收简单单文件 unified diff 并转换成精确替换；`preview_rollback_change_set` 可以对已返回的 exact edit change 生成反向预览。
 - `approval_review`、`task_plan` 会把本地写入、命令执行的 decision、scope、risk 和 required 字段显式返回，便于 ChatGPT 在执行前向用户解释。
 - `operation_journal` 会读取 `.ai-bridge/operation-journal.jsonl` 中最近的写入、编辑、bash 和 change set 事件，方便恢复和审计。
-- `codexpro start --no-bash` 会完全关闭 ChatGPT 可调用的 bash 工具。
+- `codexbridge start --no-bash` 会完全关闭 ChatGPT 可调用的 bash 工具。
 - `execute-handoff` 和 `watch-handoff` 是本地 CLI 命令，不是远程 MCP 工具。
 
 只有在你信任当前仓库和命令时，才考虑更宽的权限，例如 full bash、自定义执行器、额外 allow root。
 
 ### Codex 会话边界
 
-CodexPro 不能绑定、读取或复用某一个 Codex App 会话 id。MCP 里的 session id 只是 ChatGPT 和 CodexPro HTTP 服务器之间的传输会话，不代表 Codex 里的某个聊天或终端会话。
+CodexBridge 不能绑定、读取或复用某一个 Codex App 会话 id。MCP 里的 session id 只是 ChatGPT 和 CodexBridge HTTP 服务器之间的传输会话，不代表 Codex 里的某个聊天或终端会话。
 
-`bash` 工具属于你启动的 CodexPro 本地服务器进程，并在配置的 workspace root 下运行。想并行处理另一个任务时，请为另一个仓库、端口或 tunnel profile 启动单独的 CodexPro；不要把它理解成“远程控制当前 Codex 会话”。
+`bash` 工具属于你启动的 CodexBridge 本地服务器进程，并在配置的 workspace root 下运行。想并行处理另一个任务时，请为另一个仓库、端口或 tunnel profile 启动单独的 CodexBridge；不要把它理解成“远程控制当前 Codex 会话”。
 
-如果要减少误触发，可以给这个本地 CodexPro 进程设置 bash session guard：
+如果要减少误触发，可以给这个本地 CodexBridge 进程设置 bash session guard：
 
 ```bash
-codexpro start --bash-session main --require-bash-session
+codexbridge start --bash-session main --require-bash-session
 ```
 
-这不是 Codex App 聊天会话 id，而是 CodexPro 本地 bash 工具的显式匹配标签。
+这不是 Codex App 聊天会话 id，而是 CodexBridge 本地 bash 工具的显式匹配标签。
 
-bash 结果默认使用紧凑 transcript，避免 ChatGPT 对话里突然铺开大段 stdout/stderr。完整 stdout/stderr 仍在结构化工具数据里，CodexPro 卡片里的输出预览默认折叠。需要旧行为时可以显式打开：
+bash 结果默认使用紧凑 transcript，避免 ChatGPT 对话里突然铺开大段 stdout/stderr。完整 stdout/stderr 仍在结构化工具数据里，CodexBridge 卡片里的输出预览默认折叠。需要旧行为时可以显式打开：
 
 ```bash
-codexpro start --bash-transcript full
+codexbridge start --bash-transcript full
 ```
 
-CodexPro 也可以在 full tools 下显式开启只读的本地 Codex 会话列表：
+CodexBridge 也可以在 full tools 下显式开启只读的本地 Codex 会话列表：
 
 ```bash
-codexpro start --tool-mode full --codex-sessions metadata
-codexpro start --tool-mode full --codex-sessions read
+codexbridge start --tool-mode full --codex-sessions metadata
+codexbridge start --tool-mode full --codex-sessions read
 ```
 
 `metadata` 会增加 `codex_sessions` 工具，从 `~/.codex/sessions` 和 `~/.codex/archived_sessions` 读取本地 JSONL 历史，列出 session id、标题、cwd、来源文件和 `codex resume <session-id>` 命令。`read` 还会增加 `read_codex_session`，用于有限长度的 transcript 读取。它类似本地 session manager 扫描 Codex 历史文件，但仍然不会附加到正在运行的 Codex App 聊天，也不会在那个会话里执行命令或绕过产品限制。
@@ -402,22 +404,22 @@ codexpro start --tool-mode full --codex-sessions read
 如果只想让 ChatGPT 规划、由你本地决定是否执行：
 
 ```bash
-codexpro start --mode handoff --no-bash
+codexbridge start --mode handoff --no-bash
 ```
 
 ## 常用命令
 
 ```bash
-codexpro setup
-codexpro start
-codexpro doctor
-codexpro settings
-codexpro settings list
-codexpro settings set --tunnel ngrok --hostname your-name.ngrok-free.dev
-codexpro settings delete --yes
-codexpro pro-bundle --copy
-codexpro execute-handoff --agent opencode --model provider/model --dry-run
-codexpro watch-handoff --agent opencode --model provider/model --yes
+codexbridge setup
+codexbridge start
+codexbridge doctor
+codexbridge settings
+codexbridge settings list
+codexbridge settings set --tunnel ngrok --hostname your-name.ngrok-free.dev
+codexbridge settings delete --yes
+codexbridge pro-bundle --copy
+codexbridge execute-handoff --agent opencode --model provider/model --dry-run
+codexbridge watch-handoff --agent opencode --model provider/model --yes
 ```
 
 终端控制键：
@@ -427,14 +429,14 @@ Enter  打开 ChatGPT connector 设置
 c      再次复制 Server URL
 o      打开本地 admin dashboard
 h      显示帮助
-q      停止 CodexPro
+q      停止 CodexBridge
 ```
 
 本地 admin dashboard 是带 token 保护的 setup/settings 页面。它会显示当前 workspace、local MCP endpoint、安全模式、安装/启动命令、ChatGPT 连接步骤、saved profile 设置和 allowed roots。
 
-页面也提供 GitHub、npm、docs 链接，以及 global install、guided setup、daily start、source checkout setup 和高级重启命令的复制按钮。它能修改下一次启动使用的 saved profile：tunnel provider、public hostname、port、mode、bash mode、transcript、Codex session 模式、write mode、tool mode、widget origin 和 tunnel config 路径。修改后需要重新运行 `codexpro start` 才会生效。
+页面也提供 GitHub、npm、docs 链接，以及 global install、guided setup、daily start、source checkout setup 和高级重启命令的复制按钮。它能修改下一次启动使用的 saved profile：tunnel provider、public hostname、port、mode、bash mode、transcript、Codex session 模式、write mode、tool mode、widget origin 和 tunnel config 路径。修改后需要重新运行 `codexbridge start` 才会生效。
 
-浏览器 admin 页面只负责 setup/settings/status 和 MCP endpoint；不能切换 ChatGPT 账号，不能直接保存原始 Cloudflare tunnel token，也不能把 CodexPro 作为后台服务开关。Cloudflare dashboard-managed tunnel 请把 token 放在本地文件里，再填写 Cloudflare token file。
+浏览器 admin 页面只负责 setup/settings/status 和 MCP endpoint；不能切换 ChatGPT 账号，不能直接保存原始 Cloudflare tunnel token，也不能把 CodexBridge 作为后台服务开关。Cloudflare dashboard-managed tunnel 请把 token 放在本地文件里，再填写 Cloudflare token file。
 
 ## FAQ
 
@@ -444,14 +446,14 @@ q      停止 CodexPro
 
 - 需要 ChatGPT Plus 或 Pro，并且账号要能访问 Apps / Developer Mode。
 - Free / Go 在当前测试中不支持这个 App 创建流程。
-- CodexPro 不绕过任何速率限制。
+- CodexBridge 不绕过任何速率限制。
 - 某些 Pro / planning 模型界面不能直接连接 MCP 工具，使用 `pro-bundle` 作为上下文回退。
 - quick tunnel 每次重启 URL 会变。
 - 想每天同一个 URL，用 ngrok free dev domain 或 Cloudflare named tunnel。
 
 ## 开源与贡献
 
-项目地址：[github.com/rebel0789/codexpro](https://github.com/rebel0789/codexpro)
+项目地址：[github.com/naplesblue/codexbridge](https://github.com/naplesblue/codexbridge)
 
 欢迎提 issue、补文档、补平台兼容性、补测试。提交 PR 前请至少运行：
 
@@ -461,4 +463,4 @@ npm run smoke
 npm audit --omit=dev
 ```
 
-如果 CodexPro 对你有用，请在 GitHub 点星。这样其他使用 ChatGPT、Codex、OpenCode、Pi 和 MCP 的开发者更容易找到它。
+如果 CodexBridge 对你有用，请在 GitHub 点星。这样其他使用 ChatGPT、Codex、OpenCode、Pi 和 MCP 的开发者更容易找到它。

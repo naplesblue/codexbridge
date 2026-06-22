@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import packageJson from '../package.json' with { type: 'json' };
 
 function encode(message) {
   return `${JSON.stringify(message)}\n`;
@@ -134,8 +135,15 @@ if (commitResult.status !== 0) {
 
 const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--bash', 'safe', '--tool-mode', 'full'], {
   cwd: path.resolve('.'),
-  env: { ...process.env, CODEXPRO_ROOT: tmp, CODEXPRO_ALLOWED_ROOTS: tmp, CODEXPRO_WIDGET_DOMAIN: 'https://widgets.codexpro.test' }
+  env: { ...process.env, CODEXBRIDGE_ROOT: tmp, CODEXBRIDGE_ALLOWED_ROOTS: tmp, CODEXBRIDGE_WIDGET_DOMAIN: 'https://widgets.codexbridge.test' }
 });
+
+if (packageJson.name !== 'codexbridge') {
+  throw new Error(`package name should be codexbridge, got ${packageJson.name}`);
+}
+for (const expectedBin of ['codexbridge', 'codexbridge-mcp', 'codexbridge-mcp-http', 'codexpro', 'codexpro-mcp', 'codexpro-mcp-http']) {
+  if (!packageJson.bin?.[expectedBin]) throw new Error(`package bin missing ${expectedBin}`);
+}
 
 await client.request('initialize', {
   protocolVersion: '2024-11-05',
@@ -180,7 +188,7 @@ if (!widgetText.includes('Waiting for tool result') || !widgetText.includes('ren
 if (!widgetMeta.ui?.csp || !widgetMeta['openai/widgetCSP']) {
   throw new Error('tool-card widget resource did not expose standard and ChatGPT CSP metadata');
 }
-if (widgetMeta.ui?.domain !== 'https://widgets.codexpro.test' || widgetMeta['openai/widgetDomain'] !== 'https://widgets.codexpro.test') {
+if (widgetMeta.ui?.domain !== 'https://widgets.codexbridge.test' || widgetMeta['openai/widgetDomain'] !== 'https://widgets.codexbridge.test') {
   throw new Error('tool-card widget resource did not expose standard and ChatGPT widget domain metadata');
 }
 const current = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
@@ -501,9 +509,9 @@ client.close();
 async function assertToolMode(mode, expected, hidden) {
   const args = ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--bash', 'safe'];
   if (mode) args.push('--tool-mode', mode);
-  const modeClient = new McpStdioClient('node', args, {
+const modeClient = new McpStdioClient('node', args, {
     cwd: path.resolve('.'),
-    env: { ...process.env, CODEXPRO_ROOT: tmp, CODEXPRO_ALLOWED_ROOTS: tmp, CODEXPRO_TOOL_MODE: '' }
+    env: { ...process.env, CODEXBRIDGE_ROOT: tmp, CODEXBRIDGE_ALLOWED_ROOTS: tmp, CODEXBRIDGE_TOOL_MODE: '' }
   });
   await modeClient.request('initialize', {
     protocolVersion: '2024-11-05',
@@ -529,10 +537,10 @@ const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js',
   cwd: path.resolve('.'),
   env: {
     ...process.env,
-    CODEXPRO_ROOT: tmp,
-    CODEXPRO_ALLOWED_ROOTS: tmp,
-    CODEXPRO_CODEX_SESSIONS: 'metadata',
-    CODEXPRO_CODEX_DIR: codexHistoryDir
+    CODEXBRIDGE_ROOT: tmp,
+    CODEXBRIDGE_ALLOWED_ROOTS: tmp,
+    CODEXBRIDGE_CODEX_SESSIONS: 'metadata',
+    CODEXBRIDGE_CODEX_DIR: codexHistoryDir
   }
 });
 await standardCodexSessionsClient.request('initialize', {
@@ -553,7 +561,7 @@ standardCodexSessionsClient.close();
 
 const fullTranscriptClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--bash', 'safe'], {
   cwd: path.resolve('.'),
-  env: { ...process.env, CODEXPRO_ROOT: tmp, CODEXPRO_ALLOWED_ROOTS: tmp, CODEXPRO_BASH_TRANSCRIPT: 'full' }
+  env: { ...process.env, CODEXBRIDGE_ROOT: tmp, CODEXBRIDGE_ALLOWED_ROOTS: tmp, CODEXBRIDGE_BASH_TRANSCRIPT: 'full' }
 });
 await fullTranscriptClient.request('initialize', {
   protocolVersion: '2024-11-05',

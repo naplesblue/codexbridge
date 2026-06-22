@@ -5,19 +5,31 @@ import os from 'node:os';
 import path from 'node:path';
 
 function run(args, env) {
+  const result = spawnSync(process.execPath, ['scripts/codexbridge.mjs', ...args], {
+    cwd: path.resolve('.'),
+    env,
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    throw new Error(`codexbridge ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  }
+  return `${result.stdout}\n${result.stderr}`;
+}
+
+function runCompat(args, env) {
   const result = spawnSync(process.execPath, ['scripts/codexpro.mjs', ...args], {
     cwd: path.resolve('.'),
     env,
     encoding: 'utf8'
   });
   if (result.status !== 0) {
-    throw new Error(`codexpro ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    throw new Error(`codexpro compat ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   }
   return `${result.stdout}\n${result.stderr}`;
 }
 
 function runFail(args, env, pattern) {
-  const result = spawnSync(process.execPath, ['scripts/codexpro.mjs', ...args], {
+  const result = spawnSync(process.execPath, ['scripts/codexbridge.mjs', ...args], {
     cwd: path.resolve('.'),
     env,
     encoding: 'utf8'
@@ -41,7 +53,16 @@ async function readProfile(root, home) {
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-root-'));
 const reuseRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-reuse-'));
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-home-'));
-const env = { ...process.env, CODEXPRO_HOME: home };
+const env = { ...process.env, CODEXBRIDGE_HOME: home };
+
+const help = run(['--help'], env);
+if (!help.includes('CodexBridge easy launcher') || !help.includes('codexbridge start')) {
+  throw new Error(`help did not prefer CodexBridge naming:\n${help}`);
+}
+const compatHelp = runCompat(['--help'], env);
+if (!compatHelp.includes('CodexBridge easy launcher')) {
+  throw new Error(`codexpro compatibility wrapper did not invoke CodexBridge CLI:\n${compatHelp}`);
+}
 
 const empty = run(['settings', 'show', '--root', root], env);
 if (!empty.includes('No saved settings')) {
@@ -56,7 +77,7 @@ const saved = run([
   '--tunnel',
   'ngrok',
   '--hostname',
-  'codexpro-test.ngrok-free.app',
+  'codexbridge-test.ngrok-free.app',
   '--port',
   '19087',
   '--mode',
@@ -66,25 +87,25 @@ const saved = run([
   '--bash-transcript',
   'full',
   '--widget-domain',
-  'https://widgets.codexpro.test',
+  'https://widgets.codexbridge.test',
   '--token',
-  'codexpro-settings-token'
+  'codexbridge-settings-token'
 ], env);
 if (!saved.includes('Saved workspace settings')) {
   throw new Error(`expected settings save output, got:\n${saved}`);
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Bash transcript', 'full', '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexbridge-test.ngrok-free.app', '19087', 'Bash transcript', 'full', '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }
 }
-if (shown.includes('codexpro-settings-token')) {
+if (shown.includes('codexbridge-settings-token')) {
   throw new Error(`settings show leaked token\n${shown}`);
 }
 const profile = await readProfile(root, home);
-if (profile.toolMode !== 'full' || profile.bashTranscript !== 'full' || profile.widgetDomain !== 'https://widgets.codexpro.test') {
+if (profile.toolMode !== 'full' || profile.bashTranscript !== 'full' || profile.widgetDomain !== 'https://widgets.codexbridge.test') {
   throw new Error(`settings profile did not persist tool/widget options: ${JSON.stringify(profile)}`);
 }
 
@@ -96,7 +117,7 @@ runFail([
   '--tunnel',
   'ngrok',
   '--hostname',
-  'codexpro-test.ngrok-free.app',
+  'codexbridge-test.ngrok-free.app',
   '--require-bash-session'
 ], env, /requires --bash-session/i);
 
@@ -108,7 +129,7 @@ const guarded = run([
   '--tunnel',
   'ngrok',
   '--hostname',
-  'codexpro-test.ngrok-free.app',
+  'codexbridge-test.ngrok-free.app',
   '--bash-session',
   'guarded-main',
   '--require-bash-session'
@@ -122,7 +143,7 @@ if (guardedProfile.bashSession !== 'guarded-main' || guardedProfile.requireBashS
 }
 
 const listed = run(['settings', 'list'], env);
-if (!listed.includes(root) || !listed.includes('codexpro-test.ngrok-free.app')) {
+if (!listed.includes(root) || !listed.includes('codexbridge-test.ngrok-free.app')) {
   throw new Error(`settings list missing saved profile\n${listed}`);
 }
 
@@ -132,7 +153,7 @@ if (!reused.includes('Saved workspace settings from')) {
 }
 
 const reusedShown = run(['settings', 'show', '--root', reuseRoot], env);
-for (const expected of ['ngrok', 'codexpro-test.ngrok-free.app', '<saved>']) {
+for (const expected of ['ngrok', 'codexbridge-test.ngrok-free.app', '<saved>']) {
   if (!reusedShown.includes(expected)) {
     throw new Error(`reused settings show missing ${expected}\n${reusedShown}`);
   }

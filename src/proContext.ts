@@ -161,7 +161,7 @@ export async function buildProContext(
   workspace: Workspace,
   options: ProContextOptions = {}
 ): Promise<ProContextResult> {
-  const title = options.title?.trim() || "CodexPro Context Bundle";
+  const title = options.title?.trim() || "CodexBridge Context Bundle";
   const maxDepth = clamp(options.maxDepth, 3, 1, 6);
   const maxFiles = clamp(options.maxFiles, 24, 1, 80);
   const maxFileBytes = clamp(options.maxFileBytes, Math.min(config.maxReadBytes, 60_000), 1_000, Math.min(config.maxReadBytes, 250_000));
@@ -206,7 +206,7 @@ export async function buildProContext(
       `Bash mode: ${config.bashMode}`,
       `Tool mode: ${config.toolMode}`,
       "",
-      "Purpose: paste this bundle into a high-context ChatGPT model when that model cannot call the CodexPro MCP tools directly.",
+      "Purpose: paste this bundle into a high-context ChatGPT model when that model cannot call the CodexBridge MCP tools directly.",
       "Instruction for ChatGPT: use this as repository context, produce a narrow Codex execution plan, and avoid inventing files or runtime facts not shown here."
     ].join("\n")
   );

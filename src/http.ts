@@ -107,11 +107,24 @@ function oneOf<T extends readonly string[]>(value: unknown, values: T, fallback:
   return typeof value === "string" && values.includes(value) ? value : fallback;
 }
 
-function runtimeTunnelFallback(): TunnelMode {
-  if (process.env.CODEXPRO_TUNNEL && TUNNELS.includes(process.env.CODEXPRO_TUNNEL as TunnelMode)) {
-    return process.env.CODEXPRO_TUNNEL as TunnelMode;
+function envValue(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined && value !== "") return value;
+    if (name.startsWith("CODEXBRIDGE_")) {
+      const legacy = process.env[`CODEXPRO_${name.slice("CODEXBRIDGE_".length)}`];
+      if (legacy !== undefined && legacy !== "") return legacy;
+    }
   }
-  return process.env.CODEXPRO_TUNNEL_MODE === "0" ? "none" : "cloudflare";
+  return undefined;
+}
+
+function runtimeTunnelFallback(): TunnelMode {
+  const tunnel = envValue("CODEXBRIDGE_TUNNEL");
+  if (tunnel && TUNNELS.includes(tunnel as TunnelMode)) {
+    return tunnel as TunnelMode;
+  }
+  return envValue("CODEXBRIDGE_TUNNEL_MODE") === "0" ? "none" : "cloudflare";
 }
 
 function normalizePublicHostname(value: string | undefined): string {
@@ -138,13 +151,13 @@ function normalizeWidgetDomain(value: string | undefined): string {
 function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(config.defaultRoot)): ProfileFormValues {
   const hostname =
     profile.hostname ??
-    process.env.CODEXPRO_PUBLIC_HOSTNAME ??
-    process.env.CODEXPRO_HOSTNAME ??
+    envValue("CODEXBRIDGE_PUBLIC_HOSTNAME") ??
+    envValue("CODEXBRIDGE_HOSTNAME") ??
     process.env.NGROK_DOMAIN ??
     "";
   return {
     port: String(profile.port ?? config.port),
-    mode: oneOf(profile.mode ?? process.env.CODEXPRO_MODE, MODES, "agent"),
+    mode: oneOf(profile.mode ?? envValue("CODEXBRIDGE_MODE"), MODES, "agent"),
     tunnel: oneOf(profile.tunnel, TUNNELS, runtimeTunnelFallback()),
     hostname: String(hostname),
     tunnelName: String(profile.tunnelName ?? ""),
@@ -197,7 +210,7 @@ function serverUrlDisplay(endpoint: string | undefined, authEnabled: boolean): s
   if (!endpoint) return "";
   if (!authEnabled) return endpoint;
   const glue = endpoint.includes("?") ? "&" : "?";
-  return `${endpoint}${glue}codexpro_token=<redacted>`;
+  return `${endpoint}${glue}codexbridge_token=<redacted>`;
 }
 
 function currentTunnelMessage(tunnel: TunnelMode, endpoint: string): string {
@@ -208,7 +221,7 @@ function currentTunnelMessage(tunnel: TunnelMode, endpoint: string): string {
     return "Local-only endpoint for clients that can reach this machine.";
   }
   if (tunnel === "cloudflare") return "Cloudflare quick tunnels print a generated URL after the tunnel opens.";
-  if (tunnel === "ngrok") return "Enter your reserved ngrok domain, or set NGROK_DOMAIN before starting CodexPro.";
+  if (tunnel === "ngrok") return "Enter your reserved ngrok domain, or set NGROK_DOMAIN before starting CodexBridge.";
   if (tunnel === "cloudflare-named") return "Enter the Cloudflare hostname routed to your named tunnel.";
   return "No public tunnel is saved; local MCP clients can use the local URL.";
 }
@@ -226,8 +239,8 @@ function profileForm(config: CodexProConfig): string {
   const savedUrl = serverUrlDisplay(savedEndpoint, Boolean(config.authToken));
   const ngrokHostname = process.env.NGROK_DOMAIN ?? (values.tunnel === "ngrok" ? values.hostname : "");
   const cloudflareHostname =
-    process.env.CODEXPRO_PUBLIC_HOSTNAME ??
-    process.env.CODEXPRO_HOSTNAME ??
+    envValue("CODEXBRIDGE_PUBLIC_HOSTNAME") ??
+    envValue("CODEXBRIDGE_HOSTNAME") ??
     (values.tunnel === "cloudflare-named" ? values.hostname : "");
   const currentUrlBlock = runtimeUrl
     ? `<div class="current-url">
@@ -291,7 +304,7 @@ function profileForm(config: CodexProConfig): string {
           <button type="submit" class="primary">Save profile</button>
           <span class="mono">${escapeHtml(profilePath)}</span>
         </div>
-        <p class="note" data-profile-status>Tokens stay hidden. Restart CodexPro for saved profile changes to apply.</p>
+        <p class="note" data-profile-status>Tokens stay hidden. Restart CodexBridge for saved profile changes to apply.</p>
       </form>
     </section>`;
 }
@@ -379,24 +392,24 @@ const LOCAL_FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 6
 
 function onboardingPage(config: CodexProConfig): string {
   const localMcp = `http://${config.host}:${config.port}/mcp`;
-  const localMcpDisplay = config.authToken ? `${localMcp}?codexpro_token=<redacted>` : localMcp;
+  const localMcpDisplay = config.authToken ? `${localMcp}?codexbridge_token=<redacted>` : localMcp;
   const allowedRoots = config.allowedRoots.map((root) => `<li>${escapeHtml(root)}</li>`).join("");
   const authLabel = config.authToken ? "Token protected" : "Disabled";
   const writeTone = config.writeMode === "workspace" ? "agent" : config.writeMode;
   const rootArg = shellQuote(config.defaultRoot);
   const sessionArg = shellQuote(config.bashSessionId || "main");
-  const githubUrl = "https://github.com/rebel0789/codexpro";
-  const npmUrl = "https://www.npmjs.com/package/codexpro";
-  const docsUrl = "https://rebel0789.github.io/codexpro/";
+  const githubUrl = "https://github.com/naplesblue/codexbridge";
+  const npmUrl = "https://www.npmjs.com/package/codexbridge";
+  const docsUrl = "https://github.com/naplesblue/codexbridge#readme";
   const chatgptUrl = "https://chatgpt.com/#settings/Connectors";
   const controls = [
-    copyCommand("Re-run setup wizard", "Use the CLI for broader profile edits that are intentionally not exposed here.", "codexpro setup"),
+    copyCommand("Re-run setup wizard", "Use the CLI for broader profile edits that are intentionally not exposed here.", "codexbridge setup"),
     copyCommand("Copy local MCP URL", "Useful for a local MCP client. ChatGPT usually needs the public tunnel URL copied by the terminal.", localMcp, localMcpDisplay, "local-mcp"),
-    copyCommand("Start without bash", "Restart with file tools but no ChatGPT-triggered bash tool.", `codexpro start --root ${rootArg} --no-bash`),
-    copyCommand("Require explicit bash target", "Restart so bash calls must include this matching session_id.", `codexpro start --root ${rootArg} --bash-session ${sessionArg} --require-bash-session`),
-    copyCommand("Show Codex session list", "Restart with read-only local Codex session metadata in full tool mode.", `codexpro start --root ${rootArg} --tool-mode full --codex-sessions metadata`),
-    copyCommand("Read Codex transcripts", "Restart with bounded local transcript reads from Codex JSONL history.", `codexpro start --root ${rootArg} --tool-mode full --codex-sessions read`),
-    copyCommand("Use full bash transcript", "Restart with the raw stdout/stderr transcript instead of compact tool cards.", `codexpro start --root ${rootArg} --bash-transcript full`)
+    copyCommand("Start without bash", "Restart with file tools but no ChatGPT-triggered bash tool.", `codexbridge start --root ${rootArg} --no-bash`),
+    copyCommand("Require explicit bash target", "Restart so bash calls must include this matching session_id.", `codexbridge start --root ${rootArg} --bash-session ${sessionArg} --require-bash-session`),
+    copyCommand("Show Codex session list", "Restart with read-only local Codex session metadata in full tool mode.", `codexbridge start --root ${rootArg} --tool-mode full --codex-sessions metadata`),
+    copyCommand("Read Codex transcripts", "Restart with bounded local transcript reads from Codex JSONL history.", `codexbridge start --root ${rootArg} --tool-mode full --codex-sessions read`),
+    copyCommand("Use full bash transcript", "Restart with the raw stdout/stderr transcript instead of compact tool cards.", `codexbridge start --root ${rootArg} --bash-transcript full`)
   ].join("");
   return `<!doctype html>
 <html lang="en">
@@ -404,7 +417,7 @@ function onboardingPage(config: CodexProConfig): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="/favicon.ico">
-  <title>CodexPro Admin</title>
+  <title>CodexBridge Admin</title>
   <style>
     /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
     /* Hallmark · macrostructure: Workbench · genre: modern-minimal · theme: CC Switch-inspired light manager · tone: technical admin · nav: section switcher · footer: Ft2 · contrast: pass (40-41) · mobile: pass (34, 49, 50-57) */
@@ -1160,10 +1173,10 @@ function onboardingPage(config: CodexProConfig): string {
         <span class="logo" aria-hidden="true"><img src="/favicon.ico" alt=""></span>
         <span>
           <span class="brand-kicker">Local admin</span>
-          <span class="brand-title">CodexPro</span>
+          <span class="brand-title">CodexBridge</span>
         </span>
       </div>
-      <nav class="quick-links" aria-label="CodexPro resources">
+      <nav class="quick-links" aria-label="CodexBridge resources">
         <a class="action-link primary-link" href="${chatgptUrl}" target="_blank" rel="noreferrer">Open ChatGPT</a>
         <a class="resource-link" href="${githubUrl}" target="_blank" rel="noreferrer">Open GitHub</a>
         <a class="resource-link" href="${npmUrl}" target="_blank" rel="noreferrer">NPM</a>
@@ -1191,7 +1204,7 @@ function onboardingPage(config: CodexProConfig): string {
             <div class="guide-item"><span class="num">1</span><span><strong>Check the profile</strong><p>Save the tunnel, port, mode, bash, write, tool, Codex sessions, and working directory defaults for the next launch.</p></span></div>
             <div class="guide-item"><span class="num">2</span><span><strong>Copy the Server URL</strong><p>Use the current public URL shown in the profile when available, or the one printed by the terminal after launch.</p></span></div>
             <div class="guide-item"><span class="num">3</span><span><strong>Open ChatGPT settings</strong><p>Create an app connection, choose Server URL, paste the public URL, and use no extra authentication.</p></span></div>
-            <div class="guide-item"><span class="num">4</span><span><strong>Restart for policy changes</strong><p>Saved profile changes apply when CodexPro starts again. This keeps the live server predictable.</p></span></div>
+            <div class="guide-item"><span class="num">4</span><span><strong>Restart for policy changes</strong><p>Saved profile changes apply when CodexBridge starts again. This keeps the live server predictable.</p></span></div>
           </div>
         </section>
         <article class="run-card" id="status" aria-label="Current runtime">
@@ -1222,7 +1235,7 @@ function onboardingPage(config: CodexProConfig): string {
         <ol class="steps">
           <li><span class="num">1</span><span>Open ChatGPT settings and create an app connection.</span></li>
           <li><span class="num">2</span><span>Set Connection to <code>Server URL</code>.</span></li>
-          <li><span class="num">3</span><span>Paste the public CodexPro URL from the terminal.</span></li>
+          <li><span class="num">3</span><span>Paste the public CodexBridge URL from the terminal.</span></li>
           <li><span class="num">4</span><span>Use <code>No Authentication / None</code>; the private token is already in the copied URL.</span></li>
         </ol>
         <p class="note"><a class="action-link" href="${chatgptUrl}" target="_blank" rel="noreferrer">Open ChatGPT settings</a></p>
@@ -1251,7 +1264,7 @@ function onboardingPage(config: CodexProConfig): string {
     <details class="panel details-panel">
       <summary>Allowed roots</summary>
       <ul class="roots">${allowedRoots}</ul>
-      <p class="note">CodexPro rejects workspace access outside these roots.</p>
+      <p class="note">CodexBridge rejects workspace access outside these roots.</p>
     </details>
     <footer class="foot">Local admin surface for status, saved profile settings, CLI restart commands, and MCP access. Public sharing still happens through your chosen tunnel.</footer>
   </main>
@@ -1262,13 +1275,13 @@ function onboardingPage(config: CodexProConfig): string {
         if (button.getAttribute("data-copy-kind") === "local-mcp") {
           const base = button.getAttribute("data-copy-base") || value;
           const params = new URLSearchParams(window.location.search);
-          const token = params.get("codexpro_token") || params.get("token") || "";
-          value = token ? base + "?codexpro_token=" + encodeURIComponent(token) : base;
+          const token = params.get("codexbridge_token") || params.get("codexpro_token") || params.get("token") || "";
+          value = token ? base + "?codexbridge_token=" + encodeURIComponent(token) : base;
         } else if (button.getAttribute("data-copy-kind") === "server-url") {
           const base = button.getAttribute("data-copy-base") || value;
           const params = new URLSearchParams(window.location.search);
-          const token = params.get("codexpro_token") || params.get("token") || "";
-          value = token ? base + "?codexpro_token=" + encodeURIComponent(token) : base;
+          const token = params.get("codexbridge_token") || params.get("codexpro_token") || params.get("token") || "";
+          value = token ? base + "?codexbridge_token=" + encodeURIComponent(token) : base;
         }
         try {
           await navigator.clipboard.writeText(value);
@@ -1287,7 +1300,7 @@ function onboardingPage(config: CodexProConfig): string {
     function serverPreviewFor(hostname) {
       const clean = String(hostname || "").trim().replace(/^https?:\\/\\//, "").replace(/\\/mcp\\/?$/, "").replace(/\\/+$/, "");
       if (!clean) return "";
-      return "https://" + clean + "/mcp" + (tokenEnabled ? "?codexpro_token=<redacted>" : "");
+      return "https://" + clean + "/mcp" + (tokenEnabled ? "?codexbridge_token=<redacted>" : "");
     }
     function updateTunnelHelp() {
       if (!tunnelSelect || !hostnameInput || !hostnameHelp) return;
@@ -1351,7 +1364,7 @@ function onboardingPage(config: CodexProConfig): string {
           });
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(result.error?.message || "Save failed");
-          if (status) status.textContent = "Saved. Restart CodexPro for these profile settings to apply.";
+          if (status) status.textContent = "Saved. Restart CodexBridge for these profile settings to apply.";
         } catch (error) {
           if (status) status.textContent = error instanceof Error ? error.message : "Save failed";
         }
@@ -1366,14 +1379,14 @@ async function main(): Promise<void> {
   const config = loadConfig();
   if (config.requireHttpToken && !config.authToken) {
     throw new Error(
-      "CODEXPRO_HTTP_TOKEN is required for this HTTP binding. " +
-        "Set CODEXPRO_HTTP_TOKEN, use `codexpro start` to generate one, " +
-        "or set CODEXPRO_ALLOW_NO_HTTP_TOKEN=1 only for a trusted local-only setup."
+      "CODEXBRIDGE_HTTP_TOKEN is required for this HTTP binding. " +
+        "Set CODEXBRIDGE_HTTP_TOKEN, use `codexbridge start` to generate one, " +
+        "or set CODEXBRIDGE_ALLOW_NO_HTTP_TOKEN=1 only for a trusted local-only setup."
     );
   }
 
   const app = express();
-  const logRequests = process.env.CODEXPRO_LOG_REQUESTS === "1";
+  const logRequests = process.env.CODEXBRIDGE_LOG_REQUESTS === "1" || process.env.CODEXPRO_LOG_REQUESTS === "1";
 
   function tokenMatches(value: unknown): boolean {
     if (!config.authToken || typeof value !== "string") return false;
@@ -1417,7 +1430,7 @@ async function main(): Promise<void> {
     }
     const started = Date.now();
     res.on("finish", () => {
-      console.error(`[CodexPro] ${req.method} ${req.path} -> ${res.statusCode} ${Date.now() - started}ms`);
+      console.error(`[CodexBridge] ${req.method} ${req.path} -> ${res.statusCode} ${Date.now() - started}ms`);
     });
     next();
   });
@@ -1434,11 +1447,13 @@ async function main(): Promise<void> {
     const bearer = req.headers.authorization?.startsWith("Bearer ")
       ? req.headers.authorization.slice("Bearer ".length)
       : undefined;
-    const queryToken = typeof req.query.codexpro_token === "string"
-      ? req.query.codexpro_token
-      : typeof req.query.token === "string"
-        ? req.query.token
-        : undefined;
+    const queryToken = typeof req.query.codexbridge_token === "string"
+      ? req.query.codexbridge_token
+      : typeof req.query.codexpro_token === "string"
+        ? req.query.codexpro_token
+        : typeof req.query.token === "string"
+          ? req.query.token
+          : undefined;
     if (!tokenMatches(bearer) && !tokenMatches(queryToken)) {
       res.status(401).send("Unauthorized");
       return;
@@ -1498,7 +1513,7 @@ async function main(): Promise<void> {
   app.get("/healthz", (_req, res) => {
     res.json({
       ok: true,
-      name: "CodexPro",
+      name: "CodexBridge",
       defaultRoot: config.defaultRoot,
       allowedRoots: config.allowedRoots,
       bashMode: config.bashMode,
@@ -1533,7 +1548,7 @@ async function main(): Promise<void> {
         ...profileResponse(config),
         saved: true,
         profile_path: profilePath,
-        message: "Saved. Restart CodexPro for these profile settings to apply."
+        message: "Saved. Restart CodexBridge for these profile settings to apply."
       });
     } catch (error) {
       jsonError(res, 400, "invalid_profile", error instanceof Error ? error.message : String(error));
@@ -1609,12 +1624,12 @@ async function main(): Promise<void> {
   app.delete("/mcp", handleSessionRequest);
 
   app.listen(config.port, config.host, () => {
-    console.error(`[CodexPro] HTTP MCP listening on http://${config.host}:${config.port}/mcp`);
-    console.error(`[CodexPro] defaultRoot=${config.defaultRoot}`);
-    console.error(`[CodexPro] allowedRoots=${config.allowedRoots.join(", ")}`);
-    console.error(`[CodexPro] bashMode=${config.bashMode}`);
-    console.error(`[CodexPro] writeMode=${config.writeMode}`);
-    console.error(`[CodexPro] widgetDomain=${config.widgetDomain}`);
+    console.error(`[CodexBridge] HTTP MCP listening on http://${config.host}:${config.port}/mcp`);
+    console.error(`[CodexBridge] defaultRoot=${config.defaultRoot}`);
+    console.error(`[CodexBridge] allowedRoots=${config.allowedRoots.join(", ")}`);
+    console.error(`[CodexBridge] bashMode=${config.bashMode}`);
+    console.error(`[CodexBridge] writeMode=${config.writeMode}`);
+    console.error(`[CodexBridge] widgetDomain=${config.widgetDomain}`);
   });
 }
 

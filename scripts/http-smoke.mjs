@@ -76,16 +76,18 @@ async function expectHttpTokenRequired(name, overrides = {}) {
   const port = await getFreePort();
   const env = {
     ...process.env,
-    CODEXPRO_ROOT: root,
-    CODEXPRO_ALLOWED_ROOTS: root,
-    CODEXPRO_HOST: '127.0.0.1',
-    CODEXPRO_PORT: String(port),
-    CODEXPRO_BASH_MODE: 'safe',
-    CODEXPRO_WRITE_MODE: 'handoff',
+    CODEXBRIDGE_ROOT: root,
+    CODEXBRIDGE_ALLOWED_ROOTS: root,
+    CODEXBRIDGE_HOST: '127.0.0.1',
+    CODEXBRIDGE_PORT: String(port),
+    CODEXBRIDGE_BASH_MODE: 'safe',
+    CODEXBRIDGE_WRITE_MODE: 'handoff',
     ...overrides
   };
+  delete env.CODEXBRIDGE_HTTP_TOKEN;
   delete env.CODEXPRO_HTTP_TOKEN;
   delete env.CODEBASE_BRIDGE_HTTP_TOKEN;
+  delete env.CODEXBRIDGE_ALLOW_NO_HTTP_TOKEN;
   delete env.CODEXPRO_ALLOW_NO_HTTP_TOKEN;
 
   const child = spawn('node', ['dist/http.js'], {
@@ -97,7 +99,7 @@ async function expectHttpTokenRequired(name, overrides = {}) {
   if (result.code === 0) {
     throw new Error(`expected ${name} HTTP server without token to fail closed`);
   }
-  if (!result.stderr.includes('CODEXPRO_HTTP_TOKEN is required')) {
+  if (!result.stderr.includes('CODEXBRIDGE_HTTP_TOKEN is required')) {
     throw new Error(`expected ${name} missing-token failure, got:\n${result.stderr}`);
   }
 }
@@ -126,8 +128,8 @@ function hasWidgetMeta(tools, name, uri) {
   return meta.ui?.resourceUri === uri || meta['openai/outputTemplate'] === uri;
 }
 
-await expectHttpTokenRequired('non-loopback', { CODEXPRO_HOST: '0.0.0.0' });
-await expectHttpTokenRequired('tunnel-mode', { CODEXPRO_TUNNEL_MODE: '1' });
+await expectHttpTokenRequired('non-loopback', { CODEXBRIDGE_HOST: '0.0.0.0' });
+await expectHttpTokenRequired('tunnel-mode', { CODEXBRIDGE_TUNNEL_MODE: '1' });
 
 async function withClient(url, fn) {
   const client = new Client({ name: 'codexpro-http-smoke', version: '0.0.0' });
@@ -162,20 +164,20 @@ await fs.writeFile(path.join(root, '.codex', 'skills', 'http-smoke-skill', 'SKIL
   ''
 ].join('\n'), 'utf8');
 const port = await getFreePort();
-const token = 'codexpro-http-smoke-token';
+const token = 'codexbridge-http-smoke-token';
 const child = spawn('node', ['dist/http.js'], {
   cwd: path.resolve('.'),
   env: {
     ...process.env,
-    CODEXPRO_ROOT: root,
-    CODEXPRO_ALLOWED_ROOTS: root,
-    CODEXPRO_PORT: String(port),
-    CODEXPRO_HTTP_TOKEN: token,
-    CODEXPRO_BASH_MODE: 'safe',
-    CODEXPRO_WRITE_MODE: 'handoff',
-    CODEXPRO_TOOL_MODE: 'full',
-    CODEXPRO_WIDGET_DOMAIN: 'https://widgets.codexpro.test',
-    CODEXPRO_HOME: profileHome
+    CODEXBRIDGE_ROOT: root,
+    CODEXBRIDGE_ALLOWED_ROOTS: root,
+    CODEXBRIDGE_PORT: String(port),
+    CODEXBRIDGE_HTTP_TOKEN: token,
+    CODEXBRIDGE_BASH_MODE: 'safe',
+    CODEXBRIDGE_WRITE_MODE: 'handoff',
+    CODEXBRIDGE_TOOL_MODE: 'full',
+    CODEXBRIDGE_WIDGET_DOMAIN: 'https://widgets.codexbridge.test',
+    CODEXBRIDGE_HOME: profileHome
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -196,7 +198,7 @@ try {
     throw new Error(`expected authenticated healthz to return 200, got ${authorized.status}`);
   }
 
-  const queryAuthorized = await fetch(`${baseUrl}/healthz?codexpro_token=${encodeURIComponent(token)}`);
+  const queryAuthorized = await fetch(`${baseUrl}/healthz?codexbridge_token=${encodeURIComponent(token)}`);
   if (queryAuthorized.status !== 200) {
     throw new Error(`expected URL-token healthz to return 200, got ${queryAuthorized.status}`);
   }
@@ -206,12 +208,12 @@ try {
     throw new Error(`expected unauthenticated favicon to return SVG 200, got ${favicon.status} ${favicon.headers.get('content-type')}`);
   }
 
-  const home = await fetch(`${baseUrl}/?codexpro_token=${encodeURIComponent(token)}`);
+  const home = await fetch(`${baseUrl}/?codexbridge_token=${encodeURIComponent(token)}`);
   const homeText = await home.text();
   if (home.status !== 200 || !home.headers.get('content-type')?.includes('text/html')) {
     throw new Error(`expected authenticated onboarding page to return HTML 200, got ${home.status}`);
   }
-  if (!homeText.includes('CodexPro Admin') || !homeText.includes('CLI controls') || !homeText.includes('Connect ChatGPT')) {
+  if (!homeText.includes('CodexBridge Admin') || !homeText.includes('CLI controls') || !homeText.includes('Connect ChatGPT')) {
     throw new Error('onboarding page did not include expected admin setup copy');
   }
   if (!homeText.includes('Connection profile') || !homeText.includes('data-profile-form')) {
@@ -221,7 +223,7 @@ try {
     throw new Error('onboarding page leaked the raw auth token');
   }
 
-  const profileBefore = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`);
+  const profileBefore = await fetch(`${baseUrl}/admin/profile?codexbridge_token=${encodeURIComponent(token)}`);
   const profileBeforeJson = await profileBefore.json();
   if (profileBefore.status !== 200 || profileBeforeJson.exists !== false) {
     throw new Error(`expected empty admin profile response, got ${profileBefore.status} ${JSON.stringify(profileBeforeJson)}`);
@@ -230,12 +232,12 @@ try {
     throw new Error('admin profile GET leaked the raw auth token');
   }
 
-  const invalidProfile = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
+  const invalidProfile = await fetch(`${baseUrl}/admin/profile?codexbridge_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       tunnel: 'ngrok',
-      hostname: 'codexpro-http-smoke.ngrok-free.app',
+      hostname: 'codexbridge-http-smoke.ngrok-free.app',
       requireBashSession: true,
       bashSession: ''
     })
@@ -244,12 +246,12 @@ try {
     throw new Error(`expected invalid guarded profile to return 400, got ${invalidProfile.status}`);
   }
 
-  const profileSave = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
+  const profileSave = await fetch(`${baseUrl}/admin/profile?codexbridge_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       tunnel: 'ngrok',
-      hostname: 'https://codexpro-http-smoke.ngrok-free.app/mcp',
+      hostname: 'https://codexbridge-http-smoke.ngrok-free.app/mcp',
       port,
       mode: 'agent',
       bash: 'safe',
@@ -260,9 +262,9 @@ try {
       requireBashSession: true,
       write: 'workspace',
       toolMode: 'full',
-      widgetDomain: 'https://widgets.codexpro.test',
+      widgetDomain: 'https://widgets.codexbridge.test',
       ngrokConfig: path.join(root, 'ngrok.yml'),
-      cloudflareTokenFile: '~/.codexpro/cloudflare-tunnel-token'
+      cloudflareTokenFile: '~/.codexbridge/cloudflare-tunnel-token'
     })
   });
   const profileSaveJson = await profileSave.json();
@@ -275,7 +277,7 @@ try {
   const savedProfile = JSON.parse(await fs.readFile(profileSaveJson.profile_path, 'utf8'));
   if (
     savedProfile.tunnel !== 'ngrok' ||
-    savedProfile.hostname !== 'codexpro-http-smoke.ngrok-free.app' ||
+    savedProfile.hostname !== 'codexbridge-http-smoke.ngrok-free.app' ||
     savedProfile.bashTranscript !== 'full' ||
     savedProfile.codexSessions !== 'metadata' ||
     savedProfile.bashSession !== 'http-main' ||
@@ -285,7 +287,7 @@ try {
     throw new Error(`admin profile save wrote unexpected profile: ${JSON.stringify(savedProfile)}`);
   }
 
-  const queryTools = await listTools(`${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`);
+  const queryTools = await listTools(`${baseUrl}/mcp?codexbridge_token=${encodeURIComponent(token)}`);
   const queryToolNames = toolNames(queryTools);
   for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'load_skill', 'show_changes', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
     if (!queryToolNames.includes(expected)) {
@@ -305,7 +307,7 @@ try {
     throw new Error(`bearer MCP tools/list missing server_config; got ${headerToolNames.join(', ')}`);
   }
 
-  const mcpUrl = `${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`;
+  const mcpUrl = `${baseUrl}/mcp?codexbridge_token=${encodeURIComponent(token)}`;
   await withClient(mcpUrl, async (client) => {
     const resources = await client.listResources();
     const toolCard = resources.resources.find((resource) => resource.uri === toolCardUri);
@@ -322,7 +324,7 @@ try {
     if (!widgetMeta.ui?.csp || !widgetMeta['openai/widgetCSP']) {
       throw new Error('HTTP tool-card widget resource did not expose standard and ChatGPT CSP metadata');
     }
-    if (widgetMeta.ui?.domain !== 'https://widgets.codexpro.test' || widgetMeta['openai/widgetDomain'] !== 'https://widgets.codexpro.test') {
+    if (widgetMeta.ui?.domain !== 'https://widgets.codexbridge.test' || widgetMeta['openai/widgetDomain'] !== 'https://widgets.codexbridge.test') {
       throw new Error('HTTP tool-card widget resource did not expose standard and ChatGPT widget domain metadata');
     }
   });
@@ -415,7 +417,7 @@ const cliRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cli-http-smoke
 await fs.mkdir(path.join(cliRoot, '.codex'), { recursive: true });
 const cliPort = await getFreePort();
 const cliChild = spawn(process.execPath, [
-  'scripts/codexpro.mjs',
+  'scripts/codexbridge.mjs',
   'start',
   '--root',
   cliRoot,
@@ -432,7 +434,7 @@ const cliChild = spawn(process.execPath, [
   cwd: path.resolve('.'),
   env: {
     ...process.env,
-    CODEXPRO_HOME: await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cli-http-home-'))
+    CODEXBRIDGE_HOME: await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-cli-http-home-'))
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });

@@ -16,11 +16,11 @@ async function getFreePort() {
   });
 }
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-doctor-smoke-'));
-const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-doctor-home-'));
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-doctor-smoke-'));
+const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-doctor-home-'));
 const port = await getFreePort();
 const result = spawnSync(process.execPath, [
-  'scripts/codexpro.mjs',
+  'scripts/codexbridge.mjs',
   'doctor',
   '--root',
   root,
@@ -30,7 +30,7 @@ const result = spawnSync(process.execPath, [
   'none'
 ], {
   cwd: path.resolve('.'),
-  env: { ...process.env, CODEXPRO_HOME: home },
+  env: { ...process.env, CODEXBRIDGE_HOME: home },
   encoding: 'utf8'
 });
 
@@ -39,7 +39,7 @@ if (result.status !== 0) {
 }
 
 const output = `${result.stdout}\n${result.stderr}`;
-for (const expected of ['CodexPro doctor', 'Node', 'Build artifacts', 'Local port', 'Ready']) {
+for (const expected of ['CodexBridge doctor', 'Node', 'Build artifacts', 'Local port', 'Ready']) {
   if (!output.includes(expected)) {
     throw new Error(`doctor output missing ${expected}\n${output}`);
   }

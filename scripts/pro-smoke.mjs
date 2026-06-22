@@ -15,13 +15,13 @@ function run(args, options = {}) {
   return result;
 }
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-pro-smoke-'));
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-pro-smoke-'));
 await fs.writeFile(path.join(root, 'README.md'), '# Demo\n', 'utf8');
 await fs.writeFile(path.join(root, 'demo.txt'), 'alpha\nbeta\n', 'utf8');
 
 run(['scripts/pro-bundle.mjs', '--root', root, '--path', 'demo.txt', '--max-files', '4', '--max-total-bytes', '80000']);
 const proContext = await fs.readFile(path.join(root, '.ai-bridge', 'pro-context.md'), 'utf8');
-if (!proContext.includes('CodexPro Context Bundle') || !proContext.includes('demo.txt')) {
+if (!proContext.includes('CodexBridge Context Bundle') || !proContext.includes('demo.txt')) {
   throw new Error('pro context bundle did not include expected content');
 }
 run([

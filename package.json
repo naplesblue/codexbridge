@@ -1,22 +1,23 @@
 {
-  "name": "codexpro",
+  "name": "codexbridge",
   "version": "0.28.5",
-  "description": "A local MCP/App SDK-style connector that lets ChatGPT inspect, edit, and hand off work to Codex inside a local dev workspace.",
+  "description": "A local MCP/App SDK-style bridge that lets ChatGPT inspect, edit, verify, and hand off work inside a local dev workspace.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rebel0789/codexpro.git"
+    "url": "git+https://github.com/naplesblue/codexbridge.git"
   },
   "bugs": {
-    "url": "https://github.com/rebel0789/codexpro/issues"
+    "url": "https://github.com/naplesblue/codexbridge/issues"
   },
-  "homepage": "https://rebel0789.github.io/codexpro/",
+  "homepage": "https://github.com/naplesblue/codexbridge#readme",
   "keywords": [
     "mcp",
     "chatgpt",
     "codex",
     "apps-sdk",
+    "codexbridge",
     "codexpro",
     "local-development",
     "cloudflare-tunnel",
@@ -48,6 +49,9 @@
     "access": "public"
   },
   "bin": {
+    "codexbridge": "scripts/codexbridge.mjs",
+    "codexbridge-mcp": "dist/stdio.js",
+    "codexbridge-mcp-http": "dist/http.js",
     "codexpro": "scripts/codexpro.mjs",
     "codexpro-mcp": "dist/stdio.js",
     "codexpro-mcp-http": "dist/http.js"
@@ -61,14 +65,14 @@
     "dev:stdio": "tsx src/stdio.ts",
     "dev:http": "tsx src/http.ts",
     "smoke": "node scripts/smoke.mjs && node scripts/http-smoke.mjs && node scripts/pro-smoke.mjs && node scripts/doctor-smoke.mjs && node scripts/settings-smoke.mjs && node scripts/execute-handoff-smoke.mjs",
-    "doctor": "node scripts/codexpro.mjs doctor",
-    "connect": "node scripts/codexpro.mjs",
-    "connect:setup": "node scripts/codexpro.mjs setup",
-    "connect:local": "node scripts/codexpro.mjs --tunnel none",
-    "connect:cloudflare": "node scripts/codexpro.mjs --tunnel cloudflare",
-    "connect:chatgpt": "node scripts/codexpro.mjs --tunnel cloudflare",
-    "connect:stable": "node scripts/codexpro.mjs --tunnel cloudflare-named",
-    "connect:ngrok": "node scripts/codexpro.mjs ngrok",
+    "doctor": "node scripts/codexbridge.mjs doctor",
+    "connect": "node scripts/codexbridge.mjs",
+    "connect:setup": "node scripts/codexbridge.mjs setup",
+    "connect:local": "node scripts/codexbridge.mjs --tunnel none",
+    "connect:cloudflare": "node scripts/codexbridge.mjs --tunnel cloudflare",
+    "connect:chatgpt": "node scripts/codexbridge.mjs --tunnel cloudflare",
+    "connect:stable": "node scripts/codexbridge.mjs --tunnel cloudflare-named",
+    "connect:ngrok": "node scripts/codexbridge.mjs ngrok",
     "pro:bundle": "node scripts/pro-bundle.mjs",
     "pro:apply": "node scripts/pro-apply.mjs"
   },
