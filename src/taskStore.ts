@@ -44,12 +44,38 @@ function archiveTaskPath(config: CodexBridgeConfig, taskId: string): string {
   return `${config.contextDir}/tasks/${taskId}.json`;
 }
 
+function isIsoDateString(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isTaskRecord(value: unknown): value is TaskRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Partial<TaskRecord>;
+  return (
+    record.schema_version === 1 &&
+    typeof record.task_id === "string" &&
+    record.task_id.startsWith("task_") &&
+    typeof record.goal === "string" &&
+    record.goal.trim().length > 0 &&
+    isStringArray(record.target_paths) &&
+    isStringArray(record.plan_steps) &&
+    (record.status === "in_progress" || record.status === "complete" || record.status === "abandoned") &&
+    isIsoDateString(record.created_at) &&
+    isIsoDateString(record.updated_at) &&
+    (record.completed_at === undefined || isIsoDateString(record.completed_at))
+  );
+}
+
 export function readActiveTask(config: CodexBridgeConfig, guard: PathGuard, workspace: Workspace): TaskRecord | null {
   const resolved = guard.resolve(workspace, activeTaskPath(config));
   if (!fs.existsSync(resolved.absPath)) return null;
   try {
-    const record = JSON.parse(fs.readFileSync(resolved.absPath, "utf8")) as TaskRecord;
-    if (!record || typeof record.task_id !== "string") return null;
+    const record = JSON.parse(fs.readFileSync(resolved.absPath, "utf8"));
+    if (!isTaskRecord(record)) return null;
     return record;
   } catch {
     // Corrupt active-task file: degrade to "no active task" rather than crash.

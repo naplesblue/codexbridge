@@ -1638,7 +1638,7 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         proposed_changes: z.array(z.record(z.unknown())).optional().describe("Optional proposed change set to preview and include in approval requirements."),
         plan_steps: z.array(z.string()).optional().describe("The agent's actual implementation steps. When provided, the goal and plan are persisted as the workspace's active task and a task_id is returned for later task_resume.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
+      annotations: HANDOFF_WRITE_ANNOTATIONS,
       _meta: {
         ...toolCardMeta(),
         "openai/toolInvocation/invoking": "Drafting task plan...",
@@ -1716,7 +1716,7 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         max_events: z.number().int().min(1).max(500).optional().describe("Recent journal events to include. Default: 50."),
         complete: z.boolean().optional().describe("Mark the active task complete and archive it to .ai-bridge/tasks/<id>.json. Default: false.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
+      annotations: HANDOFF_WRITE_ANNOTATIONS,
       _meta: {
         ...toolCardMeta(),
         "openai/toolInvocation/invoking": "Preparing task report...",

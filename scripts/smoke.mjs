@@ -179,6 +179,12 @@ for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_i
 }
 const toolCardUri = 'ui://widget/codexbridge-tool-card-v1.html';
 const toolsByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+if (toolsByName.get('task_plan')?.annotations?.readOnlyHint !== false) {
+  throw new Error(`task_plan must not be declared read-only: ${JSON.stringify(toolsByName.get('task_plan')?.annotations)}`);
+}
+if (toolsByName.get('task_report')?.annotations?.readOnlyHint !== false) {
+  throw new Error(`task_report must not be declared read-only: ${JSON.stringify(toolsByName.get('task_report')?.annotations)}`);
+}
 function hasWidgetMeta(name) {
   const meta = toolsByName.get(name)?._meta ?? {};
   return meta.ui?.resourceUri === toolCardUri || meta['openai/outputTemplate'] === toolCardUri;
@@ -531,6 +537,13 @@ const resumeAfter = await client.request('tools/call', { name: 'task_resume', ar
 if (resumeAfter.structuredContent.active !== false) {
   throw new Error(`task_resume should report no active task after complete: ${JSON.stringify(resumeAfter.structuredContent)}`);
 }
+
+await fs.writeFile(currentTaskFile, JSON.stringify({ task_id: 'task_corrupt' }), 'utf8');
+const corruptResume = await client.request('tools/call', { name: 'task_resume', arguments: { workspace_id: ws } });
+if (corruptResume.structuredContent.active !== false) {
+  throw new Error(`task_resume should ignore corrupt active task records: ${JSON.stringify(corruptResume.structuredContent)}`);
+}
+await fs.rm(currentTaskFile);
 
 // Starting a new task while one is in_progress archives the prior as abandoned
 await client.request('tools/call', { name: 'task_plan', arguments: { workspace_id: ws, goal: 'First task', plan_steps: ['step a'] } });
