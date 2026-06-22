@@ -83,6 +83,8 @@ codexpro start \
 - Use `--mode handoff` for planning workflows where ChatGPT should not edit source files.
 - Preview local handoff execution with `codexpro execute-handoff --dry-run` before running an unfamiliar adapter or custom command.
 - Keep `execute-handoff` local. Do not wrap it in a remote MCP tool unless you add a stronger approval and sandbox story.
+- Use `task_brief`, `task_plan`, and `approval_review` for Codex-quota fallback work so ChatGPT sees explicit repo context, command policy, and local-write approval scope before applying changes.
+- Treat `preview_rollback_change_set` as a review aid for exact edit changes, not as a substitute for git history or backups.
 - Use default agent mode only with trusted ChatGPT sessions and repo-specific roots.
 - Use `--no-bash` when ChatGPT should never trigger shell commands in the workspace.
 - Use `--bash-session <id> --require-bash-session` when bash should be enabled only for calls that explicitly target this local CodexPro terminal label.

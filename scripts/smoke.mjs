@@ -145,7 +145,7 @@ await client.request('initialize', {
 client.notify('notifications/initialized');
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
-for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'bash', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
   if (!toolNames.includes(expected)) throw new Error(`missing tool: ${expected}`);
 }
 const toolCardUri = 'ui://widget/codexpro-tool-card-v9.html';
@@ -286,6 +286,49 @@ const codexContext = await client.request('tools/call', { name: 'codex_context',
 if (!codexContext.structuredContent.agents_files.includes('AGENTS.md')) throw new Error('codex_context did not include AGENTS.md');
 if (codexContext.structuredContent.agents_files.length !== 1) throw new Error(`codex_context returned duplicate AGENTS files: ${codexContext.structuredContent.agents_files.join(', ')}`);
 if (!codexContext.content?.[0]?.text?.includes('Smoke Agents')) throw new Error('codex_context did not include AGENTS.md content');
+const taskBrief = await client.request('tools/call', {
+  name: 'task_brief',
+  arguments: { workspace_id: ws, goal: 'Update demo text safely', target_path: 'demo.txt', include_diff: true, include_tree: true }
+});
+if (taskBrief.structuredContent.goal !== 'Update demo text safely' || !taskBrief.structuredContent.agents_files?.includes?.('AGENTS.md')) {
+  throw new Error(`task_brief did not return goal and AGENTS context: ${JSON.stringify(taskBrief.structuredContent)}`);
+}
+if (!taskBrief.structuredContent.recommended_workflow?.includes?.('preview_change_set')) {
+  throw new Error(`task_brief did not recommend change-set workflow: ${JSON.stringify(taskBrief.structuredContent.recommended_workflow)}`);
+}
+const taskPlan = await client.request('tools/call', {
+  name: 'task_plan',
+  arguments: {
+    workspace_id: ws,
+    goal: 'Update demo text safely',
+    target_paths: ['demo.txt'],
+    proposed_commands: ['npm run build:clients'],
+    proposed_changes: [{ path: 'demo.txt', old_text: 'omega', new_text: 'OMEGA', expected_replacements: 1 }]
+  }
+});
+if (!taskPlan.structuredContent.steps?.some?.((step) => step.tool === 'preview_change_set')) {
+  throw new Error(`task_plan did not include preview_change_set step: ${JSON.stringify(taskPlan.structuredContent.steps)}`);
+}
+if (!taskPlan.structuredContent.approval_requirements?.some?.((item) => item.scope === 'local_write' && item.required === true)) {
+  throw new Error(`task_plan did not expose local write approval: ${JSON.stringify(taskPlan.structuredContent.approval_requirements)}`);
+}
+const approvalReview = await client.request('tools/call', {
+  name: 'approval_review',
+  arguments: {
+    workspace_id: ws,
+    actions: [
+      { type: 'command', command: 'npm run build:clients' },
+      { type: 'command', command: 'npm install left-pad' },
+      { type: 'change_set', changes: [{ path: 'demo.txt', old_text: 'omega', new_text: 'OMEGA', expected_replacements: 1 }] }
+    ]
+  }
+});
+if (approvalReview.structuredContent.decision !== 'deny' || !approvalReview.structuredContent.actions?.some?.((action) => action.scope === 'command' && action.decision === 'deny')) {
+  throw new Error(`approval_review did not deny blocked command: ${JSON.stringify(approvalReview.structuredContent)}`);
+}
+if (!approvalReview.structuredContent.actions?.some?.((action) => action.scope === 'local_write' && action.required === true)) {
+  throw new Error(`approval_review did not mark change set as approval-required: ${JSON.stringify(approvalReview.structuredContent)}`);
+}
 const pwdBash = await client.request('tools/call', { name: 'bash', arguments: { workspace_id: ws, command: 'pwd' } });
 const pwdBashText = pwdBash.content?.[0]?.text ?? '';
 if (!pwdBashText.includes('Exit: 0') || pwdBashText.includes('## stdout') || pwdBashText.includes('## stderr')) {
@@ -302,6 +345,10 @@ await expectToolError('bash', { workspace_id: ws, command: 'npm install left-pad
 const clientBuild = await client.request('tools/call', { name: 'bash', arguments: { workspace_id: ws, command: 'npm run build:clients', timeout_ms: 60000 } });
 if (!clientBuild.structuredContent.stdout?.includes('clients ok')) {
   throw new Error('safe bash did not run npm run build:clients');
+}
+const taskVerify = await client.request('tools/call', { name: 'task_verify', arguments: { workspace_id: ws, command: 'npm run build:clients', timeout_ms: 60000 } });
+if (taskVerify.structuredContent.policy?.decision !== 'allow' || taskVerify.structuredContent.result?.exitCode !== 0) {
+  throw new Error(`task_verify did not run allowed verification: ${JSON.stringify(taskVerify.structuredContent)}`);
 }
 const previewChangeSet = await client.request('tools/call', {
   name: 'preview_change_set',
@@ -331,6 +378,32 @@ if (!appliedDemo.startsWith('ALPHA\n')) {
   throw new Error(`apply_change_set did not update demo.txt: ${appliedDemo}`);
 }
 await fs.stat(path.join(tmp, 'new-notes.md'));
+const unifiedPreview = await client.request('tools/call', {
+  name: 'preview_change_set',
+  arguments: {
+    workspace_id: ws,
+    changes: [{
+      unified_diff: '--- a/demo.txt\n+++ b/demo.txt\n@@ -1,4 +1,4 @@\n ALPHA\n read\n write\n-omega\n+OMEGA\n'
+    }]
+  }
+});
+if (unifiedPreview.structuredContent.change_count !== 1 || unifiedPreview.structuredContent.changes?.[0]?.kind !== 'edit') {
+  throw new Error(`preview_change_set did not parse unified diff: ${JSON.stringify(unifiedPreview.structuredContent)}`);
+}
+const unifiedApply = await client.request('tools/call', {
+  name: 'apply_change_set',
+  arguments: { workspace_id: ws, changes: unifiedPreview.structuredContent.changes }
+});
+if (unifiedApply.structuredContent.applied !== true) {
+  throw new Error(`apply_change_set did not apply parsed unified diff: ${JSON.stringify(unifiedApply.structuredContent)}`);
+}
+const rollbackPreview = await client.request('tools/call', {
+  name: 'preview_rollback_change_set',
+  arguments: { workspace_id: ws, changes: unifiedApply.structuredContent.changes }
+});
+if (rollbackPreview.structuredContent.change_count !== 1 || !rollbackPreview.structuredContent.diff?.includes('-OMEGA')) {
+  throw new Error(`preview_rollback_change_set did not invert exact edit: ${JSON.stringify(rollbackPreview.structuredContent)}`);
+}
 await expectToolError('apply_change_set', {
   workspace_id: ws,
   changes: [
@@ -344,6 +417,10 @@ const journal = await client.request('tools/call', {
 const eventNames = journal.structuredContent.events.map((event) => event.event);
 for (const expected of ['write', 'edit', 'bash', 'apply_change_set']) {
   if (!eventNames.includes(expected)) throw new Error(`operation_journal missing ${expected}: ${eventNames.join(', ')}`);
+}
+const taskReport = await client.request('tools/call', { name: 'task_report', arguments: { workspace_id: ws, max_events: 20, include_diff: false } });
+if (!taskReport.structuredContent.changed || !taskReport.structuredContent.events?.some?.((event) => event.event === 'task_verify')) {
+  throw new Error(`task_report did not summarize task state and journal: ${JSON.stringify(taskReport.structuredContent)}`);
 }
 const exported = await client.request('tools/call', { name: 'export_pro_context', arguments: { workspace_id: ws, selected_paths: ['demo.txt'], max_files: 4, max_total_bytes: 80000 } });
 if (exported.structuredContent.path !== '.ai-bridge/pro-context.md') throw new Error('export_pro_context wrote an unexpected path');
@@ -445,8 +522,8 @@ async function assertToolMode(mode, expected, hidden) {
   modeClient.close();
 }
 
-await assertToolMode('', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'bash', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexpro_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
-await assertToolMode('minimal', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
+await assertToolMode('', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexpro_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
+await assertToolMode('minimal', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
 
 const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp], {
   cwd: path.resolve('.'),

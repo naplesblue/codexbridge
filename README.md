@@ -162,6 +162,12 @@ Standard mode exposes:
 - `edit` — exact text replacement and return a diff. Controlled by `CODEXPRO_WRITE_MODE`.
 - `preview_change_set` — preview a multi-file transactional text change set without writing files.
 - `apply_change_set` — apply a validated multi-file text change set with base-hash checks and rollback on write failure.
+- `preview_rollback_change_set` — preview the inverse of a previously returned exact-edit change set without writing files.
+- `approval_review` — review proposed commands and change sets with structured decision, scope, risk, and approval requirement fields.
+- `task_brief` — load a Codex-like task context bundle with goal, AGENTS chain, bridge context, git state, and optional tree/diff.
+- `task_plan` — create a compact execution checklist with command policies and write approval requirements.
+- `task_verify` — run one policy-checked verification command and journal the result.
+- `task_report` — summarize current task state with git changes, diff stats, and recent operation events.
 - `bash` — run allowlisted shell commands in the workspace. Controlled by `CODEXPRO_BASH_MODE`.
 - `show_changes` — one review-oriented summary with git status, diff stats, and optional diff.
 - `operation_journal` — read recent bounded operation events for recovery and audit.
@@ -1041,7 +1047,11 @@ full      all tools, including inventory, workspace snapshots, raw git tools, co
 
 For small and medium coding tasks, prefer `preview_change_set` and `apply_change_set` when a change touches multiple files or when a base hash matters. The preview computes the same diffs as single-file `write` and `edit`, but does not write. Apply revalidates the inputs, writes the files, and rolls back files already written if a later write fails.
 
+`preview_change_set` also accepts simple single-file unified diff hunks through `{ "unified_diff": "..." }` and converts them into exact replacements before validation. Use `preview_rollback_change_set` with exact-edit changes returned by preview/apply when you need a reviewable inverse patch; write/create rollback is intentionally not inferred without explicit previous content.
+
 CodexPro also writes `.ai-bridge/operation-journal.jsonl` for successful `write`, `edit`, `bash`, and `apply_change_set` tool calls. Use `operation_journal` to inspect recent events, touched paths, commands, diff stats, duration, and errors. This is an audit and recovery aid, not a replacement for git history.
+
+For Codex-quota fallback sessions, start with `task_brief`, use `task_plan` to make approval and verification needs explicit, review risky actions with `approval_review`, then apply changes and finish with `task_verify` plus `task_report`.
 
 Launcher examples:
 

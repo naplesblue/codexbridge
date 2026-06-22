@@ -12,8 +12,10 @@ import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./works
 import { buildProContext, exportProContext } from "./proContext.js";
 import { codexproInventory, loadSkill } from "./capabilitiesOps.js";
 import { listCodexSessions, readCodexSession } from "./codexSessions.js";
-import { applyChangeSet, previewChangeSet, type ChangeSetInput } from "./changeSet.js";
+import { applyChangeSet, changesFromUnifiedDiff, previewChangeSet, type ChangeSetInput } from "./changeSet.js";
 import { appendJournalEvent, readJournalEvents } from "./journal.js";
+import { buildTaskBrief, buildTaskPlan, buildTaskReport, reviewApprovalActions } from "./taskOps.js";
+import { decideCommandPolicy } from "./policy.js";
 import { TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { redactSensitiveText, redactStructured } from "./redact.js";
 
@@ -216,6 +218,12 @@ const STANDARD_TOOL_NAMES = [
   "load_skill",
   "preview_change_set",
   "apply_change_set",
+  "preview_rollback_change_set",
+  "approval_review",
+  "task_brief",
+  "task_plan",
+  "task_verify",
+  "task_report",
   "operation_journal",
   "read_handoff",
   "export_pro_context",
@@ -238,6 +246,12 @@ const FULL_TOOL_NAMES = [
   "edit",
   "preview_change_set",
   "apply_change_set",
+  "preview_rollback_change_set",
+  "approval_review",
+  "task_brief",
+  "task_plan",
+  "task_verify",
+  "task_report",
   "bash",
   "git_status",
   "git_diff",
@@ -298,18 +312,20 @@ function serverInstructions(config: CodexProConfig): string {
     "",
     "Preferred workflow:",
     "1. Start with open_current_workspace. Use open_workspace only when the user gives a different root or asks to switch folders.",
-    "2. Follow any AGENTS.md-style instructions returned by the workspace open call before editing files.",
-    "3. Inspect with tree, search, and read. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
-    "4. Edit with write/edit. After edits, call show_changes once for git status, diff stats, and review diff.",
-    "5. Use bash only for meaningful verification commands such as npm test, npm run build, lint, typecheck, or an existing project script.",
-    "6. Keep tool calls minimal. Prefer one targeted search plus show_changes instead of repeated broad bash/git calls.",
+    "2. For coding tasks, call task_brief and task_plan so repo rules, approval scope, and verification commands are explicit.",
+    "3. Follow any AGENTS.md-style instructions returned by the workspace open call or task_brief before editing files.",
+    "4. Inspect with tree, search, and read. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
+    "5. Prefer preview_change_set, approval_review, and apply_change_set for multi-file or hash-sensitive edits.",
+    "6. Use task_verify or bash only for meaningful verification commands such as npm test, npm run build, lint, typecheck, or an existing project script.",
+    "7. Finish coding tasks with task_report or show_changes for git status, diff stats, journal events, and review diff.",
+    "8. Keep tool calls minimal. Prefer one targeted search plus task_report/show_changes instead of repeated broad bash/git calls.",
     config.codexSessions !== "off"
-      ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
+      ? `9. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
       : "",
     config.requireBashSession && config.bashSessionId
-      ? `8. Bash session guard is enabled. Every bash call must include session_id="${config.bashSessionId}".`
+      ? `10. Bash session guard is enabled. Every bash call must include session_id="${config.bashSessionId}".`
       : config.bashSessionId
-        ? `8. Bash session label for this server is "${config.bashSessionId}".`
+        ? `10. Bash session label for this server is "${config.bashSessionId}".`
         : "",
     "",
     `Current modes: tool=${config.toolMode}, bash=${config.bashMode}, write=${config.writeMode}.`
@@ -382,33 +398,84 @@ function cleanOneLine(value: unknown, fallback: string, maxLength = 120): string
 
 function normalizeChangeSetInput(value: unknown): ChangeSetInput[] {
   if (!Array.isArray(value)) throw new CodexProError("changes must be an array.");
-  return value.map((item) => {
+  const out: ChangeSetInput[] = [];
+  for (const item of value) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       throw new CodexProError("Each change must be an object.");
     }
     const change = item as Record<string, unknown>;
+    if (typeof change.unified_diff === "string") {
+      out.push(...changesFromUnifiedDiff({
+        unified_diff: change.unified_diff,
+        path: typeof change.path === "string" ? change.path : undefined,
+        base_sha256: typeof change.base_sha256 === "string" ? change.base_sha256 : undefined
+      }));
+      continue;
+    }
     const pathValue = String(change.path ?? "").trim();
     if (!pathValue) throw new CodexProError("Each change requires path.");
     if (typeof change.old_text === "string") {
-      return {
+      out.push({
         path: pathValue,
         old_text: change.old_text,
         new_text: String(change.new_text ?? ""),
         replace_all: parseBool(change.replace_all, false),
         expected_replacements: typeof change.expected_replacements === "number" ? change.expected_replacements : undefined,
         base_sha256: typeof change.base_sha256 === "string" ? change.base_sha256 : undefined
-      };
+      });
+      continue;
     }
     if (typeof change.content === "string") {
-      return {
+      out.push({
         path: pathValue,
         content: change.content,
         create_dirs: parseBool(change.create_dirs, true),
         overwrite: parseBool(change.overwrite, true),
         base_sha256: typeof change.base_sha256 === "string" ? change.base_sha256 : undefined
-      };
+      });
+      continue;
     }
     throw new CodexProError(`Change for ${pathValue} must include either content or old_text.`);
+  }
+  return out;
+}
+
+function normalizeRollbackChangeSetInput(value: unknown): ChangeSetInput[] {
+  if (!Array.isArray(value)) throw new CodexProError("changes must be an array.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new CodexProError("Each rollback change must be an object.");
+    }
+    const change = item as Record<string, unknown>;
+    const pathValue = String(change.path ?? "").trim();
+    if (!pathValue) throw new CodexProError("Each rollback change requires path.");
+    if (change.kind !== "edit" || typeof change.old_text !== "string" || typeof change.new_text !== "string") {
+      throw new CodexProError(`Rollback preview currently supports exact edit changes only: ${pathValue}`);
+    }
+    return {
+      path: pathValue,
+      old_text: change.new_text,
+      new_text: change.old_text,
+      expected_replacements: typeof change.replacements === "number" ? change.replacements : 1,
+      base_sha256: typeof change.next_sha256 === "string" ? change.next_sha256 : undefined
+    };
+  });
+}
+
+function normalizeApprovalActions(value: unknown): Array<{ type: "command"; command: string } | { type: "change_set"; changes: ChangeSetInput[] }> {
+  if (!Array.isArray(value)) throw new CodexProError("actions must be an array.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new CodexProError("Each approval action must be an object.");
+    }
+    const action = item as Record<string, unknown>;
+    if (action.type === "command") {
+      return { type: "command", command: String(action.command ?? "") };
+    }
+    if (action.type === "change_set") {
+      return { type: "change_set", changes: normalizeChangeSetInput(action.changes) };
+    }
+    throw new CodexProError("approval action type must be command or change_set.");
   });
 }
 
@@ -1399,6 +1466,216 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         root: workspace.root,
         ...result
       });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "preview_rollback_change_set",
+    {
+      title: "Preview Rollback Change Set",
+      description: "Preview the inverse of a previously previewed/applied exact-edit change set. Does not write files.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        changes: z.array(z.record(z.unknown())).min(1).max(50).describe("Change entries returned by preview_change_set or apply_change_set. Exact edit changes only.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Previewing rollback...",
+        "openai/toolInvocation/invoked": "Rollback preview ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const rollbackChanges = normalizeRollbackChangeSetInput(args.changes);
+      const result = await previewChangeSet(config, guard, workspace, rollbackChanges);
+      const text = `# Preview Rollback Change Set\n\nChanges: ${result.change_count}\nChanged: ${result.changed}\nDiff stats: +${result.additions} -${result.deletions}${diffBlock(result.diff)}`;
+      return textResult(text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        rollback_changes: rollbackChanges,
+        ...result
+      });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "approval_review",
+    {
+      title: "Approval Review",
+      description: "Review proposed commands and change sets before running or applying them. Returns structured decision, scope, risk, and reasons.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        actions: z.array(z.record(z.unknown())).min(1).max(20).describe("Actions such as {type:'command', command} or {type:'change_set', changes}.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Reviewing approval requirements...",
+        "openai/toolInvocation/invoked": "Approval review ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await reviewApprovalActions(config, guard, workspace, normalizeApprovalActions(args.actions));
+      const rows = result.actions.map((action) => `- ${action.scope}: ${action.decision.toUpperCase()} ${action.required ? "(approval required)" : ""} ${action.reason}`).join("\n");
+      const text = `# Approval Review\n\nDecision: ${result.decision}\nApproval required: ${result.required}\nRisk: ${result.risk}\n\n${rows}`;
+      return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "task_brief",
+    {
+      title: "Task Brief",
+      description: "Load the Codex-like task context ChatGPT should use before making repo changes: AGENTS chain, bridge context, git state, and optional tree/diff.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        goal: z.string().describe("User-facing coding task goal."),
+        target_path: z.string().optional().describe("Target file or directory whose AGENTS chain matters. Default: ."),
+        include_diff: z.boolean().optional().describe("Include current git diff. Default: false."),
+        include_tree: z.boolean().optional().describe("Include a compact repo tree. Default: true.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Preparing task brief...",
+        "openai/toolInvocation/invoked": "Task brief ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await buildTaskBrief(config, guard, workspace, {
+        goal: String(args.goal ?? ""),
+        targetPath: typeof args.target_path === "string" ? args.target_path : undefined,
+        includeDiff: parseBool(args.include_diff, false),
+        includeTree: parseBool(args.include_tree, true)
+      });
+      const text = `# Task Brief\n\nGoal: ${result.goal}\nTarget: ${result.target_path}\nAGENTS files: ${result.agents_files.join(", ") || "none"}\nRecommended workflow: ${result.recommended_workflow.join(" -> ")}\n\n${result.context_text}${result.tree ? `\n\n## Tree\n\n\`\`\`text\n${result.tree}\n\`\`\`` : ""}`;
+      return textResult(text, { ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "task_plan",
+    {
+      title: "Task Plan",
+      description: "Create a compact Codex-like execution checklist with command policy and write approval requirements for a proposed coding task.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        goal: z.string().describe("User-facing coding task goal."),
+        target_paths: z.array(z.string()).optional().describe("Likely files or directories involved."),
+        proposed_commands: z.array(z.string()).optional().describe("Verification commands the model expects to run."),
+        proposed_changes: z.array(z.record(z.unknown())).optional().describe("Optional proposed change set to preview and include in approval requirements.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Drafting task plan...",
+        "openai/toolInvocation/invoked": "Task plan ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await buildTaskPlan(config, guard, workspace, {
+        goal: String(args.goal ?? ""),
+        targetPaths: Array.isArray(args.target_paths) ? args.target_paths.map(String) : [],
+        proposedCommands: Array.isArray(args.proposed_commands) ? args.proposed_commands.map(String) : [],
+        proposedChanges: Array.isArray(args.proposed_changes) ? normalizeChangeSetInput(args.proposed_changes) : undefined
+      });
+      const steps = result.steps.map((step) => `${step.order}. ${step.tool}: ${step.purpose}`).join("\n");
+      const approvals = result.approval_requirements.length
+        ? result.approval_requirements.map((item) => `- ${item.scope}: ${item.decision} (${item.reason})`).join("\n")
+        : "- No approval requirements detected from provided proposed inputs.";
+      const text = `# Task Plan\n\nGoal: ${result.goal}\nTargets: ${result.target_paths.join(", ") || "not specified"}\n\n## Steps\n\n${steps}\n\n## Approval Requirements\n\n${approvals}`;
+      return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "task_verify",
+    {
+      title: "Task Verify",
+      description: "Run one policy-checked verification command for the current coding task and journal the result.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        command: z.string().describe("Verification command to run."),
+        cwd: z.string().optional().describe("Working directory relative to workspace root. Default: ."),
+        timeout_ms: z.number().int().min(1000).max(180000).optional().describe("Timeout in milliseconds. Default: 30000.")
+      },
+      annotations: BASH_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Running task verification...",
+        "openai/toolInvocation/invoked": "Task verification finished"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const command = String(args.command ?? "");
+      const policy = decideCommandPolicy(config, command);
+      const result = await runBash(config, guard, workspace, command, {
+        cwd: args.cwd,
+        timeoutMs: args.timeout_ms
+      });
+      await appendJournalEvent(config, guard, workspace, {
+        event: "task_verify",
+        status: result.exitCode === 0 ? "ok" : "error",
+        command: result.command,
+        durationMs: result.durationMs,
+        error: result.exitCode === 0 ? undefined : result.stderr || `exit ${result.exitCode ?? "null"}`
+      });
+      const text = `${bashTextResult(config, result)}\n\n## Policy\n\nDecision: ${policy.decision}\nRisk: ${policy.risk}\nReason: ${policy.reason}`;
+      return textResult(text, { workspace_id: workspace.id, root: workspace.root, policy, result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "task_report",
+    {
+      title: "Task Report",
+      description: "Summarize current task state with git changes, diff stats, and recent operation journal events.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        include_diff: z.boolean().optional().describe("Include raw git diff. Default: true."),
+        max_events: z.number().int().min(1).max(500).optional().describe("Recent journal events to include. Default: 50.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Preparing task report...",
+        "openai/toolInvocation/invoked": "Task report ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await buildTaskReport(
+        config,
+        guard,
+        workspace,
+        {
+          includeDiff: parseBool(args.include_diff, true),
+          maxEvents: limitInt(args.max_events, 50, 1, 500)
+        },
+        { normalizeGitOutput, looksLikeGitError, changedStatusLines, diffStats }
+      );
+      const eventRows = result.events.length
+        ? result.events.map((event) => `- ${event.ts} ${event.status.toUpperCase()} ${event.event} ${event.paths?.join(", ") ?? event.command ?? ""}`.trim()).join("\n")
+        : "- No journal events.";
+      const text = `# Task Report\n\nChanged: ${result.changed}\nDiff stats: +${result.additions} -${result.deletions}\n\n## Changed Files\n\n${result.changed_files.length ? result.changed_files.map((line) => `- ${line}`).join("\n") : "- No changed files."}\n\n## Recent Events\n\n${eventRows}${result.diff ? diffBlock(result.diff) : ""}`;
+      return textResult(text, { ...result });
     }
   );
 

@@ -25,6 +25,12 @@ export type ChangeSetInput =
       base_sha256?: string;
     };
 
+export interface UnifiedDiffChangeInput {
+  path?: string;
+  unified_diff: string;
+  base_sha256?: string;
+}
+
 export interface PreviewedChange {
   path: string;
   kind: "write" | "edit";
@@ -65,6 +71,80 @@ interface PreparedChange extends PreviewedChange {
 
 function isEditChange(change: ChangeSetInput): change is Extract<ChangeSetInput, { old_text: string }> {
   return Object.prototype.hasOwnProperty.call(change, "old_text");
+}
+
+function cleanDiffPath(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "/dev/null") return "";
+  return trimmed.replace(/^(?:a|b)\//, "");
+}
+
+export function changesFromUnifiedDiff(input: UnifiedDiffChangeInput): ChangeSetInput[] {
+  const diff = String(input.unified_diff ?? "").replace(/\r\n/g, "\n");
+  if (!diff.trim()) throw new CodexProError("unified_diff must not be empty.");
+
+  const changes: ChangeSetInput[] = [];
+  let currentPath = cleanDiffPath(input.path ?? "");
+  let oldLines: string[] = [];
+  let newLines: string[] = [];
+  let inHunk = false;
+
+  function flushHunk(): void {
+    if (!inHunk) return;
+    const oldText = oldLines.join("\n");
+    const newText = newLines.join("\n");
+    if (!currentPath) throw new CodexProError("unified_diff is missing a target path. Provide path or include a +++ b/path header.");
+    if (!oldText) throw new CodexProError(`unified_diff for ${currentPath} cannot be converted because the hunk has no removable/context text.`);
+    if (oldText !== newText) {
+      changes.push({
+        path: currentPath,
+        old_text: oldText,
+        new_text: newText,
+        expected_replacements: 1,
+        base_sha256: input.base_sha256
+      });
+    }
+    oldLines = [];
+    newLines = [];
+    inHunk = false;
+  }
+
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("--- ")) {
+      flushHunk();
+      continue;
+    }
+    if (line.startsWith("+++ ")) {
+      flushHunk();
+      currentPath = cleanDiffPath(input.path ?? line.slice(4));
+      if (!currentPath) throw new CodexProError("Creating or deleting files from unified_diff is not supported. Use explicit change set writes instead.");
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      flushHunk();
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (line.startsWith("\\ No newline")) continue;
+    if (line.startsWith(" ")) {
+      oldLines.push(line.slice(1));
+      newLines.push(line.slice(1));
+    } else if (line.startsWith("-")) {
+      oldLines.push(line.slice(1));
+    } else if (line.startsWith("+")) {
+      newLines.push(line.slice(1));
+    } else if (line === "") {
+      oldLines.push("");
+      newLines.push("");
+    } else {
+      throw new CodexProError(`Unsupported unified_diff line for ${currentPath || "unknown path"}: ${line.slice(0, 80)}`);
+    }
+  }
+  flushHunk();
+
+  if (!changes.length) throw new CodexProError("unified_diff did not contain any applicable text changes.");
+  return changes;
 }
 
 async function readExistingText(config: CodexProConfig, guard: PathGuard, absPath: string): Promise<{ text: string; existed: boolean }> {
