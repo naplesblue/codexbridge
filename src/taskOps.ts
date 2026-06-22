@@ -7,6 +7,7 @@ import { readCodexContext } from "./workspaceOps.js";
 import { previewChangeSet, type ChangeSetInput, type ChangeSetPreview } from "./changeSet.js";
 import { readJournalEvents, type JournalEvent } from "./journal.js";
 import { decideCommandPolicy, decideSshCommandPolicy, type PolicyDecision, type PolicyDecisionKind, type PolicyRisk } from "./policy.js";
+import { readActiveTask, writeActiveTask, type TaskRecord, type TaskStatus } from "./taskStore.js";
 
 export interface ApprovalActionResult {
   type: "command" | "ssh_command" | "change_set";
@@ -57,6 +58,7 @@ export interface TaskPlanResult {
   command_policies: Array<{ command: string; policy: PolicyDecision }>;
   approval_requirements: ApprovalActionResult[];
   change_preview?: ChangeSetPreview;
+  task_id?: string;
 }
 
 export interface TaskReportResult {
@@ -69,6 +71,20 @@ export interface TaskReportResult {
   status: string;
   diff: string;
   events: JournalEvent[];
+}
+
+export interface TaskResumeResult {
+  active: boolean;
+  task_id?: string;
+  goal?: string;
+  plan_steps?: string[];
+  target_paths?: string[];
+  status?: TaskStatus;
+  created_at?: string;
+  git_status?: string;
+  git_diff?: string;
+  events?: JournalEvent[];
+  context_text?: string;
 }
 
 function maxRisk(values: PolicyRisk[]): PolicyRisk {
@@ -189,7 +205,7 @@ export async function buildTaskPlan(
   config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
-  options: { goal: string; targetPaths?: string[]; proposedCommands?: string[]; proposedChanges?: ChangeSetInput[] }
+  options: { goal: string; targetPaths?: string[]; proposedCommands?: string[]; proposedChanges?: ChangeSetInput[]; planSteps?: string[] }
 ): Promise<TaskPlanResult> {
   const goal = options.goal.trim();
   if (!goal) throw new CodexBridgeError("goal is required.");
@@ -229,6 +245,17 @@ export async function buildTaskPlan(
     }
   }
 
+  let taskId: string | undefined;
+  const planSteps = (options.planSteps ?? []).map((step) => step.trim()).filter(Boolean);
+  if (planSteps.length) {
+    const record = await writeActiveTask(config, guard, workspace, {
+      goal,
+      target_paths: targetPaths,
+      plan_steps: planSteps
+    });
+    taskId = record.task_id;
+  }
+
   return {
     goal,
     target_paths: targetPaths,
@@ -243,7 +270,8 @@ export async function buildTaskPlan(
     ],
     command_policies: commandPolicies,
     approval_requirements: approvalRequirements,
-    ...(changePreview ? { change_preview: changePreview } : {})
+    ...(changePreview ? { change_preview: changePreview } : {}),
+    ...(taskId ? { task_id: taskId } : {})
   };
 }
 
@@ -274,5 +302,36 @@ export async function buildTaskReport(
     status,
     diff,
     events: journal.events
+  };
+}
+
+export async function buildTaskResume(
+  config: CodexBridgeConfig,
+  guard: PathGuard,
+  workspace: Workspace,
+  options: { maxEvents: number }
+): Promise<TaskResumeResult> {
+  const record: TaskRecord | null = readActiveTask(config, guard, workspace);
+  if (!record) return { active: false };
+  const context = await readCodexContext(config, guard, workspace, {
+    targetPath: record.target_paths[0] ?? ".",
+    includeAiBridge: true,
+    includeGit: true,
+    includeDiff: true
+  });
+  const journal = await readJournalEvents(config, guard, workspace, { maxEvents: options.maxEvents });
+  const events = journal.events.filter((event) => event.ts >= record.created_at);
+  return {
+    active: true,
+    task_id: record.task_id,
+    goal: record.goal,
+    plan_steps: record.plan_steps,
+    target_paths: record.target_paths,
+    status: record.status,
+    created_at: record.created_at,
+    git_status: context.gitStatus,
+    git_diff: context.gitDiff,
+    events,
+    context_text: context.text
   };
 }
