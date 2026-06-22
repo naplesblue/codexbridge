@@ -267,6 +267,9 @@ const desktopFileDryRun = await client.request('tools/call', {
 if (!desktopFileDryRun.structuredContent.dry_run || desktopFileDryRun.structuredContent.resolved_target !== path.join(realTmp, 'demo.txt')) {
   throw new Error(`desktop_open did not dry-run workspace file open: ${JSON.stringify(desktopFileDryRun.structuredContent)}`);
 }
+if (desktopFileDryRun.structuredContent.workspace_path !== 'demo.txt') {
+  throw new Error(`desktop_open should expose workspace-relative path for journaling: ${JSON.stringify(desktopFileDryRun.structuredContent)}`);
+}
 const desktopAppDryRun = await client.request('tools/call', {
   name: 'desktop_open',
   arguments: { target_type: 'app', target: 'TextEdit', dry_run: true }
@@ -275,6 +278,40 @@ if (!desktopAppDryRun.structuredContent.argv?.includes?.('-a') || !desktopAppDry
   throw new Error(`desktop_open did not dry-run app activation: ${JSON.stringify(desktopAppDryRun.structuredContent)}`);
 }
 await expectToolError('desktop_open', { target_type: 'url', target: 'javascript:alert(1)', dry_run: true }, /desktop|URL|scheme|policy/i);
+const originalPlatform = process.platform;
+Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+try {
+  const { desktopOpen } = await import('../dist/desktopOps.js');
+  const linuxDryRun = await desktopOpen({
+    desktopMode: 'safe',
+    desktopApps: [],
+    maxOutputBytes: 120000
+  }, {
+    targetType: 'url',
+    target: 'https://example.com/linux-dry-run',
+    dryRun: true
+  });
+  if (!linuxDryRun.dry_run || linuxDryRun.argv?.at?.(-1) !== 'https://example.com/linux-dry-run') {
+    throw new Error(`desktopOpen dry_run should work on non-macOS platforms: ${JSON.stringify(linuxDryRun)}`);
+  }
+  await desktopOpen({
+    desktopMode: 'safe',
+    desktopApps: [],
+    maxOutputBytes: 120000
+  }, {
+    targetType: 'url',
+    target: 'https://example.com/linux-real-open'
+  }).then(
+    () => {
+      throw new Error('desktopOpen real execution should reject non-macOS platforms');
+    },
+    (error) => {
+      if (!/macOS|darwin|platform/i.test(String(error?.message ?? error))) throw error;
+    }
+  );
+} finally {
+  Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+}
 const selfTest = await client.request('tools/call', {
   name: 'codexbridge_self_test',
   arguments: {

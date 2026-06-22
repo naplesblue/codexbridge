@@ -1869,11 +1869,12 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const targetType = args.target_type as "url" | "workspace_path" | "app";
       const target = String(args.target ?? "");
-      const resolvedTarget = targetType === "workspace_path" ? guard.resolve(workspace, target).absPath : undefined;
+      const resolvedPath = targetType === "workspace_path" ? guard.resolve(workspace, target) : undefined;
       const result = await desktopOpen(config, {
         targetType,
         target,
-        resolvedTarget,
+        workspacePath: resolvedPath?.relPath,
+        resolvedTarget: resolvedPath?.absPath,
         dryRun: parseBool(args.dry_run, false),
         approved: parseBool(args.approved, false)
       });
@@ -1882,11 +1883,11 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
           event: "desktop_open",
           status: "ok",
           command: `${result.target_type}: ${result.target}`,
-          paths: result.resolved_target ? [result.resolved_target] : undefined,
+          paths: result.workspace_path ? [result.workspace_path] : undefined,
           durationMs: result.durationMs ?? 0
         });
       }
-      const text = `# Desktop Open${result.dry_run ? " (dry run)" : ""}\n\nMode: ${result.mode}\nType: ${result.target_type}\nTarget: ${result.target}${result.resolved_target ? `\nResolved: ${result.resolved_target}` : ""}\nargv: ${result.argv.join(" ")}\nPolicy: ${result.policy.decision} (${result.policy.category})`;
+      const text = `# Desktop Open${result.dry_run ? " (dry run)" : ""}\n\nMode: ${result.mode}\nType: ${result.target_type}\nTarget: ${result.target}${result.workspace_path ? `\nWorkspace path: ${result.workspace_path}` : ""}${result.resolved_target ? `\nResolved: ${result.resolved_target}` : ""}\nargv: ${result.argv.join(" ")}\nPolicy: ${result.policy.decision} (${result.policy.category})`;
       return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result });
     }
   );

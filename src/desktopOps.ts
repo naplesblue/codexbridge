@@ -14,6 +14,7 @@ export interface DesktopOpenResult {
   mode: DesktopMode;
   target_type: DesktopTargetType;
   target: string;
+  workspace_path?: string;
   resolved_target?: string;
   app?: string;
   argv: string[];
@@ -59,14 +60,13 @@ export async function desktopOpen(
   options: {
     targetType: DesktopTargetType;
     target: string;
+    workspacePath?: string;
     resolvedTarget?: string;
     dryRun?: boolean;
     approved?: boolean;
     timeoutMs?: number;
   }
 ): Promise<DesktopOpenResult> {
-  assertPlatformSupported();
-
   const target = options.target.trim();
   const policy = decideDesktopOpenPolicy(config.desktopMode, options.targetType, target, {
     appAllowlist: config.desktopApps
@@ -81,6 +81,9 @@ export async function desktopOpen(
     mode: config.desktopMode,
     target_type: options.targetType,
     target,
+    ...(options.targetType === "workspace_path" && options.workspacePath
+      ? { workspace_path: options.workspacePath }
+      : {}),
     ...(options.targetType === "workspace_path" && options.resolvedTarget
       ? { resolved_target: options.resolvedTarget }
       : {}),
@@ -90,6 +93,8 @@ export async function desktopOpen(
     policy
   };
   if (options.dryRun) return base;
+
+  assertPlatformSupported();
 
   const timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? 15_000, 60_000));
   const start = Date.now();
