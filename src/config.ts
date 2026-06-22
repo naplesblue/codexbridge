@@ -7,6 +7,17 @@ export type BashTranscriptMode = "compact" | "full";
 export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
+export type SshMode = "off" | "safe" | "full";
+
+export interface SshProfileConfig {
+  name: string;
+  host: string;
+  user?: string;
+  port?: number;
+  identityFile?: string;
+  workdir?: string;
+  mode?: SshMode;
+}
 
 export interface CodexBridgeConfig {
   defaultRoot: string;
@@ -20,6 +31,8 @@ export interface CodexBridgeConfig {
   bashTranscript: BashTranscriptMode;
   bashSessionId?: string;
   requireBashSession: boolean;
+  sshMode: SshMode;
+  sshProfiles: Record<string, SshProfileConfig>;
   codexSessions: CodexSessionsMode;
   codexDir: string;
   writeMode: WriteMode;
@@ -148,6 +161,11 @@ function bashModeFrom(value: string | undefined): BashMode {
   return "safe";
 }
 
+function sshModeFrom(value: string | undefined): SshMode {
+  if (value === "off" || value === "safe" || value === "full") return value;
+  return "safe";
+}
+
 function bashTranscriptFrom(value: string | undefined): BashTranscriptMode {
   if (value === "compact" || value === "full") return value;
   return "compact";
@@ -198,6 +216,64 @@ function widgetDomainFrom(value: string | undefined): string {
 function boolFrom(value: string | undefined, fallback = false): boolean {
   if (value === undefined) return fallback;
   return ["1", "true", "yes", "y", "on"].includes(value.toLowerCase());
+}
+
+function profileNameFrom(value: string): string {
+  const trimmed = value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(trimmed)) {
+    throw new Error(`Invalid SSH profile name: ${value}`);
+  }
+  return trimmed;
+}
+
+function sshHostFrom(value: unknown, profileName: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`SSH profile ${profileName} requires host.`);
+  }
+  const host = value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,252}$/.test(host)) {
+    throw new Error(`SSH profile ${profileName} has an invalid host.`);
+  }
+  return host;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function sshProfilesFrom(value: string | undefined): Record<string, SshProfileConfig> {
+  if (!value?.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    throw new Error(`CODEXBRIDGE_SSH_PROFILES must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("CODEXBRIDGE_SSH_PROFILES must be a JSON object keyed by profile name.");
+  }
+  const profiles: Record<string, SshProfileConfig> = {};
+  for (const [rawName, rawProfile] of Object.entries(parsed)) {
+    const name = profileNameFrom(rawName);
+    if (!rawProfile || typeof rawProfile !== "object" || Array.isArray(rawProfile)) {
+      throw new Error(`SSH profile ${name} must be an object.`);
+    }
+    const profile = rawProfile as Record<string, unknown>;
+    const portValue = profile.port === undefined ? undefined : Number(profile.port);
+    if (portValue !== undefined && (!Number.isInteger(portValue) || portValue < 1 || portValue > 65535)) {
+      throw new Error(`SSH profile ${name} port must be an integer from 1 to 65535.`);
+    }
+    profiles[name] = {
+      name,
+      host: sshHostFrom(profile.host, name),
+      ...(optionalString(profile.user) ? { user: optionalString(profile.user) } : {}),
+      ...(portValue !== undefined ? { port: portValue } : {}),
+      ...(optionalString(profile.identityFile) ? { identityFile: optionalString(profile.identityFile) } : {}),
+      ...(optionalString(profile.workdir) ? { workdir: optionalString(profile.workdir) } : {}),
+      ...(profile.mode !== undefined ? { mode: sshModeFrom(String(profile.mode)) } : {})
+    };
+  }
+  return profiles;
 }
 
 function isLoopbackHost(host: string): boolean {
@@ -267,6 +343,8 @@ export function loadConfig(argv = process.argv.slice(2)): CodexBridgeConfig {
     bashTranscript: bashTranscriptFrom(bashTranscriptArg ?? process.env.CODEXBRIDGE_BASH_TRANSCRIPT),
     bashSessionId,
     requireBashSession,
+    sshMode: sshModeFrom(process.env.CODEXBRIDGE_SSH_MODE),
+    sshProfiles: sshProfilesFrom(process.env.CODEXBRIDGE_SSH_PROFILES),
     codexSessions: codexSessionsFrom(codexSessionsArg ?? process.env.CODEXBRIDGE_CODEX_SESSIONS),
     codexDir: expandHome(codexDirArg || process.env.CODEXBRIDGE_CODEX_DIR || path.join(os.homedir(), ".codex")),
     writeMode: writeModeFrom(writeArg ?? process.env.CODEXBRIDGE_WRITE_MODE),

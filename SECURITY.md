@@ -34,6 +34,7 @@ The main risks are:
 - connecting an untrusted MCP client
 - exposing the server through a public tunnel without auth
 - running with `CODEXBRIDGE_BASH_MODE=full`
+- running remote commands with `CODEXBRIDGE_SSH_MODE=full`
 - running with `CODEXBRIDGE_WRITE_MODE=workspace` on an important repo
 - executing an untrusted `.ai-bridge/current-plan.md` or custom `execute-handoff --command`
 - adding overly broad allowed roots
@@ -83,6 +84,7 @@ codexbridge start \
 - Use `--mode handoff` for planning workflows where ChatGPT should not edit source files.
 - Preview local handoff execution with `codexbridge execute-handoff --dry-run` before running an unfamiliar adapter or custom command.
 - Keep `execute-handoff` local. Do not wrap it in a remote MCP tool unless you add a stronger approval and sandbox story.
+- Use SSH profiles only for hosts you control. Run `ssh_exec` with `dry_run: true` first, keep `CODEXBRIDGE_SSH_MODE=safe` by default, and do not rely on CodexBridge to handle passwords, sudo prompts, or interactive remote shells.
 - Use `task_brief`, `task_plan`, and `approval_review` for Codex-quota fallback work so ChatGPT sees explicit repo context, command policy, and local-write approval scope before applying changes.
 - Treat `preview_rollback_change_set` as a review aid for exact edit changes, not as a substitute for git history or backups.
 - Use default agent mode only with trusted ChatGPT sessions and repo-specific roots.

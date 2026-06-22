@@ -6,16 +6,17 @@ import { gitDiff, gitStatus } from "./gitOps.js";
 import { readCodexContext } from "./workspaceOps.js";
 import { previewChangeSet, type ChangeSetInput, type ChangeSetPreview } from "./changeSet.js";
 import { readJournalEvents, type JournalEvent } from "./journal.js";
-import { decideCommandPolicy, type PolicyDecision, type PolicyDecisionKind, type PolicyRisk } from "./policy.js";
+import { decideCommandPolicy, decideSshCommandPolicy, type PolicyDecision, type PolicyDecisionKind, type PolicyRisk } from "./policy.js";
 
 export interface ApprovalActionResult {
-  type: "command" | "change_set";
-  scope: "command" | "local_write";
+  type: "command" | "ssh_command" | "change_set";
+  scope: "command" | "remote_command" | "local_write";
   decision: PolicyDecisionKind;
   required: boolean;
   risk: PolicyRisk;
   reason: string;
   command?: string;
+  profile?: string;
   change_count?: number;
   additions?: number;
   deletions?: number;
@@ -119,7 +120,7 @@ export async function reviewApprovalActions(
   config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
-  actions: Array<{ type: "command"; command: string } | { type: "change_set"; changes: ChangeSetInput[] }>
+  actions: Array<{ type: "command"; command: string } | { type: "ssh_command"; command: string; profile?: string } | { type: "change_set"; changes: ChangeSetInput[] }>
 ): Promise<ApprovalReviewResult> {
   if (!actions.length) throw new CodexBridgeError("actions must contain at least one action.");
   const reviewed: ApprovalActionResult[] = [];
@@ -136,6 +137,25 @@ export async function reviewApprovalActions(
         risk: policy.risk,
         reason: policy.reason,
         command
+      });
+      continue;
+    }
+    if (action.type === "ssh_command") {
+      const command = action.command.trim();
+      if (!command) throw new CodexBridgeError("ssh_command action requires command.");
+      const profile = action.profile ? config.sshProfiles[action.profile] : undefined;
+      if (action.profile && !profile) throw new CodexBridgeError(`Unknown SSH profile: ${action.profile}`);
+      const mode = config.sshMode === "off" ? "off" : profile?.mode ?? config.sshMode;
+      const policy = decideSshCommandPolicy(mode, command);
+      reviewed.push({
+        type: "ssh_command",
+        scope: "remote_command",
+        decision: policy.decision,
+        required: policy.decision === "ask",
+        risk: policy.risk,
+        reason: policy.reason,
+        command,
+        ...(action.profile ? { profile: action.profile } : {})
       });
       continue;
     }

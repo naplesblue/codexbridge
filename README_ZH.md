@@ -171,6 +171,8 @@ codexbridge start --bash-session main --require-bash-session
 
 开启后，`bash` 工具调用必须带上 `session_id: "main"` 才会执行。
 
+需要远程运维时，可以通过 `CODEXBRIDGE_SSH_PROFILES` 配置固定 SSH profile，再用 `ssh_profiles` 查看脱敏配置，用 `ssh_exec` 先 `dry_run` 预览命令。SSH 只支持非交互命令，不处理密码、sudo prompt、scp/rsync 或长期远程 shell。
+
 ### 2. Handoff
 
 规划模式。ChatGPT 不直接写源码，只写入：

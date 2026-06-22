@@ -171,6 +171,8 @@ Standard mode exposes:
 - `task_verify` — run one policy-checked verification command and journal the result.
 - `task_report` — summarize current task state with git changes, diff stats, and recent operation events.
 - `bash` — run allowlisted shell commands in the workspace. Controlled by `CODEXBRIDGE_BASH_MODE`.
+- `ssh_profiles` — list configured remote SSH profiles with identity paths redacted.
+- `ssh_exec` — run or dry-run one non-interactive command on a configured SSH profile. Controlled by `CODEXBRIDGE_SSH_MODE`.
 - `show_changes` — one review-oriented summary with git status, diff stats, and optional diff.
 - `operation_journal` — read recent bounded operation events for recovery and audit.
 - `read_handoff` — read `.ai-bridge` files.
@@ -1084,6 +1086,18 @@ By default the bash environment is sanitized. To inherit your full local environ
 ```bash
 CODEXBRIDGE_INHERIT_ENV=1 CODEXBRIDGE_BASH_MODE=full npm run start:http
 ```
+
+## SSH modes
+
+`CODEXBRIDGE_SSH_MODE=safe` is the default for configured SSH profiles. SSH is profile-based and non-interactive: no password prompts, sudo prompts, scp/rsync, or long-lived remote shells. Configure profiles with JSON:
+
+```bash
+CODEXBRIDGE_SSH_PROFILES='{"staging":{"host":"staging.example.com","user":"deploy","port":22,"identityFile":"~/.ssh/id_ed25519","workdir":"/srv/app","mode":"safe"}}'
+```
+
+Use `ssh_profiles` to inspect redacted profile metadata, then call `ssh_exec` with `dry_run: true` before a real remote command. Safe mode allows status and log-oriented commands such as `pwd`, `hostname`, `uptime`, `df -h`, `git status`, `docker ps`, `docker logs --tail`, `systemctl status`, and bounded `journalctl -u ... -n ... --no-pager`.
+
+`CODEXBRIDGE_SSH_MODE=off` disables SSH execution. `CODEXBRIDGE_SSH_MODE=full` allows broader non-interactive commands, but high-risk commands return an approval-required policy result unless the user explicitly approves and the tool call sets `approved: true`.
 
 ### No-surprise shell mode
 

@@ -135,7 +135,23 @@ if (commitResult.status !== 0) {
 
 const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--bash', 'safe', '--tool-mode', 'full'], {
   cwd: path.resolve('.'),
-  env: { ...process.env, CODEXBRIDGE_ROOT: tmp, CODEXBRIDGE_ALLOWED_ROOTS: tmp, CODEXBRIDGE_WIDGET_DOMAIN: 'https://widgets.codexbridge.test' }
+  env: {
+    ...process.env,
+    CODEXBRIDGE_ROOT: tmp,
+    CODEXBRIDGE_ALLOWED_ROOTS: tmp,
+    CODEXBRIDGE_WIDGET_DOMAIN: 'https://widgets.codexbridge.test',
+    CODEXBRIDGE_SSH_MODE: 'safe',
+    CODEXBRIDGE_SSH_PROFILES: JSON.stringify({
+      staging: {
+        host: 'staging.example.test',
+        user: 'deploy',
+        port: 2222,
+        identityFile: '~/.ssh/codexbridge_test_key',
+        workdir: '/srv/app',
+        mode: 'safe'
+      }
+    })
+  }
 });
 
 if (packageJson.name !== 'codexbridge') {
@@ -157,7 +173,7 @@ await client.request('initialize', {
 client.notify('notifications/initialized');
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
-for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
   if (!toolNames.includes(expected)) throw new Error(`missing tool: ${expected}`);
 }
 const toolCardUri = 'ui://widget/codexbridge-tool-card-v1.html';
@@ -203,6 +219,31 @@ if (current.structuredContent.tool_mode !== 'full') throw new Error(`open_curren
 if (!current.structuredContent.skill_inventory?.some?.((skill) => skill.name === 'smoke-skill')) {
   throw new Error('open_current_workspace did not discover workspace skill inventory');
 }
+const serverConfig = await client.request('tools/call', { name: 'server_config', arguments: {} });
+if (serverConfig.structuredContent.sshMode !== 'safe' || serverConfig.structuredContent.sshProfiles !== 1) {
+  throw new Error(`server_config did not expose SSH mode/profile count: ${JSON.stringify(serverConfig.structuredContent)}`);
+}
+const sshProfiles = await client.request('tools/call', { name: 'ssh_profiles', arguments: {} });
+const stagingProfile = sshProfiles.structuredContent.profiles?.find?.((profile) => profile.name === 'staging');
+if (!stagingProfile || stagingProfile.host !== 'staging.example.test' || stagingProfile.identity_file !== '<configured>') {
+  throw new Error(`ssh_profiles did not return redacted staging profile: ${JSON.stringify(sshProfiles.structuredContent)}`);
+}
+const sshDryRun = await client.request('tools/call', {
+  name: 'ssh_exec',
+  arguments: {
+    profile: 'staging',
+    command: 'git status --short',
+    dry_run: true
+  }
+});
+if (!sshDryRun.structuredContent.dry_run || !sshDryRun.structuredContent.argv?.some?.((part) => part.includes('staging.example.test')) || !sshDryRun.structuredContent.remote_command?.includes?.('cd /srv/app')) {
+  throw new Error(`ssh_exec dry-run did not preview SSH argv and remote command: ${JSON.stringify(sshDryRun.structuredContent)}`);
+}
+if (JSON.stringify(sshDryRun.structuredContent).includes('codexbridge_test_key') || !sshDryRun.structuredContent.argv?.includes?.('<identity-file>')) {
+  throw new Error(`ssh_exec dry-run leaked identity file path: ${JSON.stringify(sshDryRun.structuredContent)}`);
+}
+await expectToolError('ssh_exec', { profile: 'staging', command: 'sudo reboot', dry_run: true }, /blocked|safe|policy/i);
+await expectToolError('approval_review', { workspace_id: current.structuredContent.workspace_id, actions: [{ type: 'ssh_command', profile: 'missing', command: 'hostname' }] }, /Unknown SSH profile/i);
 const selfTest = await client.request('tools/call', {
   name: 'codexbridge_self_test',
   arguments: {
@@ -331,6 +372,7 @@ const approvalReview = await client.request('tools/call', {
     actions: [
       { type: 'command', command: 'npm run build:clients' },
       { type: 'command', command: 'npm install left-pad' },
+      { type: 'ssh_command', profile: 'staging', command: 'sudo reboot' },
       { type: 'change_set', changes: [{ path: 'demo.txt', old_text: 'omega', new_text: 'OMEGA', expected_replacements: 1 }] }
     ]
   }
@@ -340,6 +382,9 @@ if (approvalReview.structuredContent.decision !== 'deny' || !approvalReview.stru
 }
 if (!approvalReview.structuredContent.actions?.some?.((action) => action.scope === 'local_write' && action.required === true)) {
   throw new Error(`approval_review did not mark change set as approval-required: ${JSON.stringify(approvalReview.structuredContent)}`);
+}
+if (!approvalReview.structuredContent.actions?.some?.((action) => action.scope === 'remote_command' && action.decision === 'deny')) {
+  throw new Error(`approval_review did not include SSH command policy: ${JSON.stringify(approvalReview.structuredContent)}`);
 }
 const pwdBash = await client.request('tools/call', { name: 'bash', arguments: { workspace_id: ws, command: 'pwd' } });
 const pwdBashText = pwdBash.content?.[0]?.text ?? '';
@@ -534,8 +579,8 @@ const modeClient = new McpStdioClient('node', args, {
   modeClient.close();
 }
 
-await assertToolMode('', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexbridge_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
-await assertToolMode('minimal', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
+await assertToolMode('', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexbridge_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
+await assertToolMode('minimal', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'ssh_profiles', 'ssh_exec', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
 
 const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp], {
   cwd: path.resolve('.'),

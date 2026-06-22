@@ -1,4 +1,4 @@
-import type { CodexBridgeConfig } from "./config.js";
+import type { CodexBridgeConfig, SshMode } from "./config.js";
 
 export type PolicyDecisionKind = "allow" | "ask" | "deny";
 export type PolicyRisk = "low" | "medium" | "high";
@@ -124,6 +124,116 @@ function isAllowedPackageScript(command: string): boolean {
 function startsWithAllowedPrefix(command: string): boolean {
   const normalized = compact(command);
   return isAllowedPackageScript(normalized) || SAFE_ALLOWED_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix} `));
+}
+
+const SSH_SAFE_ALLOWED_PREFIXES = [
+  "pwd",
+  "hostname",
+  "whoami",
+  "uptime",
+  "date",
+  "df -h",
+  "free -m",
+  "git status",
+  "git diff",
+  "git log",
+  "git rev-parse",
+  "git branch",
+  "docker ps",
+  "docker logs",
+  "systemctl status",
+  "systemctl is-active",
+  "systemctl is-enabled",
+  "journalctl -u"
+];
+
+const SSH_BLOCKED_PATTERNS = [
+  /(^|\s)sudo\b/,
+  /(^|\s)su\b/,
+  /(^|\s)reboot\b/,
+  /(^|\s)shutdown\b/,
+  /(^|\s)halt\b/,
+  /(^|\s)poweroff\b/,
+  /(^|\s)rm\s+/,
+  /(^|\s)mv\s+/,
+  /(^|\s)cp\s+/,
+  /(^|\s)dd\s+/,
+  /(^|\s)chmod\s+/,
+  /(^|\s)chown\s+/,
+  /(^|\s)kill\s+/,
+  /(^|\s)pkill\s+/,
+  /(^|\s)curl\s+/,
+  /(^|\s)wget\s+/,
+  /(^|\s)ssh\s+/,
+  /(^|\s)scp\s+/,
+  /(^|\s)rsync\s+/,
+  /(^|\s)docker\s+(?:rm|rmi|stop|restart|kill|exec|compose|system|volume|network)\b/,
+  /(^|\s)systemctl\s+(?:start|stop|restart|reload|enable|disable|mask|unmask)\b/,
+  /(^|\s)journalctl\b.*(?:--vacuum|-f|--follow)\b/,
+  /[;&|<>`]/,
+  /\$\(/,
+  /\n/
+];
+
+function startsWithAllowedSshPrefix(command: string): boolean {
+  const normalized = compact(command);
+  return SSH_SAFE_ALLOWED_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix} `));
+}
+
+export function decideSshCommandPolicy(mode: SshMode, command: string): PolicyDecision {
+  const normalized = compact(command);
+  if (!normalized) {
+    return {
+      decision: "deny",
+      reason: "SSH command is required.",
+      category: "ssh-command-empty",
+      risk: "low"
+    };
+  }
+  if (mode === "off") {
+    return {
+      decision: "deny",
+      reason: "SSH execution is disabled. Start with CODEXBRIDGE_SSH_MODE=safe or CODEXBRIDGE_SSH_MODE=full to enable it.",
+      category: "ssh-disabled",
+      risk: "low"
+    };
+  }
+  for (const pattern of SSH_BLOCKED_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return {
+        decision: mode === "full" ? "ask" : "deny",
+        reason:
+          `Remote command is blocked in CODEXBRIDGE_SSH_MODE=${mode}: ${normalized}\n` +
+          "Use safe status/log commands, or rerun only after explicit user approval in full SSH mode.",
+        category: "ssh-blocked-command",
+        risk: "high"
+      };
+    }
+  }
+  if (mode === "full") {
+    return {
+      decision: "allow",
+      reason: "full SSH mode allows non-interactive remote commands for trusted hosts.",
+      category: "ssh-full",
+      risk: "high"
+    };
+  }
+  if (!startsWithAllowedSshPrefix(normalized)) {
+    return {
+      decision: "deny",
+      reason:
+        `Remote command is not in the SSH safe allowlist: ${normalized}\n` +
+        "Allowed examples: pwd, hostname, uptime, df -h, free -m, git status, docker ps, docker logs --tail, systemctl status, journalctl -u service -n 100 --no-pager.",
+      category: "ssh-unlisted-command",
+      risk: "medium"
+    };
+  }
+  return {
+    decision: "allow",
+    reason: "Remote command matches the SSH safe allowlist.",
+    category: "ssh-safe-command",
+    risk: "low"
+  };
 }
 
 export function decideCommandPolicy(config: CodexBridgeConfig, command: string): PolicyDecision {

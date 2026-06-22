@@ -7,6 +7,7 @@ import { WorkspaceManager, PathGuard, CodexBridgeError, type Workspace } from ".
 import { repoTree, readTextFile, writeTextFile, editTextFile, ensureAiBridge } from "./fsOps.js";
 import { searchWorkspace } from "./searchOps.js";
 import { runBash } from "./bashOps.js";
+import { listSshProfiles, runSshCommand, type SshExecResult } from "./sshOps.js";
 import { gitDiff, gitLog, gitStatus } from "./gitOps.js";
 import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./workspaceOps.js";
 import { buildProContext, exportProContext } from "./proContext.js";
@@ -55,6 +56,45 @@ function bashTextResult(config: CodexBridgeConfig, result: Awaited<ReturnType<ty
     `Output: stdout ${stdoutLines} line${stdoutLines === 1 ? "" : "s"}, stderr ${stderrLines} line${stderrLines === 1 ? "" : "s"}.`,
     "",
     "Raw stdout/stderr are in the structured CodexBridge card. Start with `--bash-transcript full` to print raw output in chat."
+  ].join("\n");
+}
+
+function sshTextResult(result: SshExecResult): string {
+  if (result.dry_run) {
+    return [
+      "# SSH Dry Run",
+      "",
+      `Profile: ${result.profile}`,
+      `Target: ${result.user ? `${result.user}@` : ""}${result.host}:${result.port}`,
+      `Mode: ${result.mode}`,
+      `Policy: ${result.policy.decision} (${result.policy.risk})`,
+      "",
+      "## Remote Command",
+      "",
+      "```bash",
+      result.remote_command,
+      "```",
+      "",
+      "## Local argv",
+      "",
+      "```text",
+      result.argv.join(" "),
+      "```"
+    ].join("\n");
+  }
+  const stdoutLines = countTextLines(result.stdout);
+  const stderrLines = countTextLines(result.stderr);
+  return [
+    "# SSH",
+    "",
+    `Profile: ${result.profile}`,
+    `Target: ${result.user ? `${result.user}@` : ""}${result.host}:${result.port}`,
+    `Mode: ${result.mode}`,
+    `Exit: ${result.exitCode}${result.signal ? ` (${result.signal})` : ""}`,
+    `Duration: ${result.durationMs} ms`,
+    `Output: stdout ${stdoutLines} line${stdoutLines === 1 ? "" : "s"}, stderr ${stderrLines} line${stderrLines === 1 ? "" : "s"}.`,
+    "",
+    "Raw stdout/stderr are in the structured CodexBridge card."
   ].join("\n");
 }
 
@@ -224,6 +264,8 @@ const STANDARD_TOOL_NAMES = [
   "task_plan",
   "task_verify",
   "task_report",
+  "ssh_profiles",
+  "ssh_exec",
   "operation_journal",
   "read_handoff",
   "export_pro_context",
@@ -253,6 +295,8 @@ const FULL_TOOL_NAMES = [
   "task_verify",
   "task_report",
   "bash",
+  "ssh_profiles",
+  "ssh_exec",
   "git_status",
   "git_diff",
   "show_changes",
@@ -328,7 +372,7 @@ function serverInstructions(config: CodexBridgeConfig): string {
         ? `10. Bash session label for this server is "${config.bashSessionId}".`
         : "",
     "",
-    `Current modes: tool=${config.toolMode}, bash=${config.bashMode}, write=${config.writeMode}.`
+    `Current modes: tool=${config.toolMode}, bash=${config.bashMode}, ssh=${config.sshMode}, write=${config.writeMode}.`
   ].filter(Boolean).join("\n");
 }
 
@@ -462,7 +506,7 @@ function normalizeRollbackChangeSetInput(value: unknown): ChangeSetInput[] {
   });
 }
 
-function normalizeApprovalActions(value: unknown): Array<{ type: "command"; command: string } | { type: "change_set"; changes: ChangeSetInput[] }> {
+function normalizeApprovalActions(value: unknown): Array<{ type: "command"; command: string } | { type: "ssh_command"; command: string; profile?: string } | { type: "change_set"; changes: ChangeSetInput[] }> {
   if (!Array.isArray(value)) throw new CodexBridgeError("actions must be an array.");
   return value.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -472,10 +516,17 @@ function normalizeApprovalActions(value: unknown): Array<{ type: "command"; comm
     if (action.type === "command") {
       return { type: "command", command: String(action.command ?? "") };
     }
+    if (action.type === "ssh_command") {
+      return {
+        type: "ssh_command",
+        command: String(action.command ?? ""),
+        profile: typeof action.profile === "string" ? action.profile : undefined
+      };
+    }
     if (action.type === "change_set") {
       return { type: "change_set", changes: normalizeChangeSetInput(action.changes) };
     }
-    throw new CodexBridgeError("approval action type must be command or change_set.");
+    throw new CodexBridgeError("approval action type must be command, ssh_command, or change_set.");
   });
 }
 
@@ -703,6 +754,8 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         bashTranscript: config.bashTranscript,
         bashSessionId: config.bashSessionId ?? null,
         requireBashSession: config.requireBashSession,
+        sshMode: config.sshMode,
+        sshProfiles: Object.keys(config.sshProfiles).length,
         codexSessions: config.codexSessions,
         codexDir: config.codexDir,
         writeMode: config.writeMode,
@@ -1676,6 +1729,84 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         : "- No journal events.";
       const text = `# Task Report\n\nChanged: ${result.changed}\nDiff stats: +${result.additions} -${result.deletions}\n\n## Changed Files\n\n${result.changed_files.length ? result.changed_files.map((line) => `- ${line}`).join("\n") : "- No changed files."}\n\n## Recent Events\n\n${eventRows}${result.diff ? diffBlock(result.diff) : ""}`;
       return textResult(text, { ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "ssh_profiles",
+    {
+      title: "SSH Profiles",
+      description: "List configured SSH profiles with sensitive local identity paths redacted. Profiles come from CODEXBRIDGE_SSH_PROFILES.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Reading SSH profiles...",
+        "openai/toolInvocation/invoked": "SSH profiles ready"
+      }
+    },
+    async () => {
+      const profiles = listSshProfiles(config);
+      const rows = profiles.length
+        ? profiles.map((profile) => `- ${profile.name}: ${profile.user ? `${profile.user}@` : ""}${profile.host}:${profile.port} mode=${profile.mode}${profile.workdir ? ` workdir=${profile.workdir}` : ""}`).join("\n")
+        : "- No SSH profiles configured.";
+      return textResult(`# SSH Profiles\n\nMode: ${config.sshMode}\nProfiles: ${profiles.length}\n\n${rows}`, {
+        ssh_mode: config.sshMode,
+        count: profiles.length,
+        profiles
+      });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "ssh_exec",
+    {
+      title: "SSH Exec",
+      description: "Run one non-interactive command on a configured SSH profile. Supports dry-run previews, safe/full policy, bounded output, and journaled actual executions.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id used for journaling actual SSH executions. Omit to use default workspace."),
+        profile: z.string().describe("SSH profile name from ssh_profiles."),
+        command: z.string().describe("Single remote command to run. No interactive shell, pipes, redirects, or chained user commands in safe mode."),
+        cwd: z.string().optional().describe("Remote working directory override. Defaults to the profile workdir when configured."),
+        timeout_ms: z.number().int().min(1000).max(180000).optional().describe("Timeout in milliseconds. Default: 30000."),
+        dry_run: z.boolean().optional().describe("Preview ssh argv and remote command without connecting. Default: false."),
+        approved: z.boolean().optional().describe("Set true only after explicit user approval when full SSH policy returns ask.")
+      },
+      annotations: BASH_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Running SSH command...",
+        "openai/toolInvocation/invoked": "SSH command finished"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await runSshCommand(config, {
+        profile: String(args.profile ?? ""),
+        command: String(args.command ?? ""),
+        cwd: typeof args.cwd === "string" ? args.cwd : undefined,
+        timeoutMs: args.timeout_ms,
+        dryRun: parseBool(args.dry_run, false),
+        approved: parseBool(args.approved, false)
+      });
+      if (!result.dry_run) {
+        await appendJournalEvent(config, guard, workspace, {
+          event: "ssh_exec",
+          status: result.exitCode === 0 ? "ok" : "error",
+          command: `${result.profile}: ${result.command}`,
+          durationMs: result.durationMs ?? 0,
+          error: result.exitCode === 0 ? undefined : result.stderr || `exit ${result.exitCode ?? "null"}`
+        });
+      }
+      return textResult(sshTextResult(result), {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        ...result
+      });
     }
   );
 
