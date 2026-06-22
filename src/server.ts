@@ -12,6 +12,8 @@ import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./works
 import { buildProContext, exportProContext } from "./proContext.js";
 import { codexproInventory, loadSkill } from "./capabilitiesOps.js";
 import { listCodexSessions, readCodexSession } from "./codexSessions.js";
+import { applyChangeSet, previewChangeSet, type ChangeSetInput } from "./changeSet.js";
+import { appendJournalEvent, readJournalEvents } from "./journal.js";
 import { TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { redactSensitiveText, redactStructured } from "./redact.js";
 
@@ -212,6 +214,9 @@ const STANDARD_TOOL_NAMES = [
   "tree",
   "search",
   "load_skill",
+  "preview_change_set",
+  "apply_change_set",
+  "operation_journal",
   "read_handoff",
   "export_pro_context",
   "handoff_to_agent"
@@ -231,10 +236,13 @@ const FULL_TOOL_NAMES = [
   "read",
   "write",
   "edit",
+  "preview_change_set",
+  "apply_change_set",
   "bash",
   "git_status",
   "git_diff",
   "show_changes",
+  "operation_journal",
   "read_handoff",
   "codex_context",
   "export_pro_context",
@@ -370,6 +378,38 @@ function jsonlEvent(event: string, data: Record<string, unknown>): string {
 function cleanOneLine(value: unknown, fallback: string, maxLength = 120): string {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   return (text || fallback).slice(0, maxLength);
+}
+
+function normalizeChangeSetInput(value: unknown): ChangeSetInput[] {
+  if (!Array.isArray(value)) throw new CodexProError("changes must be an array.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new CodexProError("Each change must be an object.");
+    }
+    const change = item as Record<string, unknown>;
+    const pathValue = String(change.path ?? "").trim();
+    if (!pathValue) throw new CodexProError("Each change requires path.");
+    if (typeof change.old_text === "string") {
+      return {
+        path: pathValue,
+        old_text: change.old_text,
+        new_text: String(change.new_text ?? ""),
+        replace_all: parseBool(change.replace_all, false),
+        expected_replacements: typeof change.expected_replacements === "number" ? change.expected_replacements : undefined,
+        base_sha256: typeof change.base_sha256 === "string" ? change.base_sha256 : undefined
+      };
+    }
+    if (typeof change.content === "string") {
+      return {
+        path: pathValue,
+        content: change.content,
+        create_dirs: parseBool(change.create_dirs, true),
+        overwrite: parseBool(change.overwrite, true),
+        base_sha256: typeof change.base_sha256 === "string" ? change.base_sha256 : undefined
+      };
+    }
+    throw new CodexProError(`Change for ${pathValue} must include either content or old_text.`);
+  });
 }
 
 function normalizeAgentId(value: unknown): string {
@@ -606,6 +646,7 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         maxWriteBytes: config.maxWriteBytes,
         maxOutputBytes: config.maxOutputBytes,
         maxSearchResults: config.maxSearchResults,
+        maxJournalEvents: config.maxJournalEvents,
         blockedGlobs: config.blockedGlobs
       };
       return textResult(`# CodexPro Server Config\n\n${JSON.stringify(safeConfig, null, 2)}`, safeConfig);
@@ -1218,6 +1259,13 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         createDirs: args.create_dirs !== false,
         overwrite: args.overwrite !== false
       });
+      await appendJournalEvent(config, guard, workspace, {
+        event: "write",
+        status: "ok",
+        paths: [result.path],
+        additions: result.diff.additions,
+        deletions: result.diff.deletions
+      });
       const text = `# Write File\n\nPath: ${result.path}\nExisted before: ${result.existed}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
         workspace_id: workspace.id,
@@ -1263,6 +1311,13 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         replaceAll: parseBool(args.replace_all, false),
         expectedReplacements: args.expected_replacements
       });
+      await appendJournalEvent(config, guard, workspace, {
+        event: "edit",
+        status: "ok",
+        paths: [result.path],
+        additions: result.diff.additions,
+        deletions: result.diff.deletions
+      });
       const text = `# Edit File\n\nPath: ${result.path}\nReplacements: ${result.replacements}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
         workspace_id: workspace.id,
@@ -1274,6 +1329,75 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         additions: result.diff.additions,
         deletions: result.diff.deletions,
         diff: result.diff.diff
+      });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "preview_change_set",
+    {
+      title: "Preview Change Set",
+      description: "Preview a transactional set of text writes and exact replacements. Does not write files.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        changes: z.array(z.record(z.unknown())).min(1).max(50).describe("Array of write or exact-replacement changes.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Previewing change set...",
+        "openai/toolInvocation/invoked": "Change set preview ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await previewChangeSet(config, guard, workspace, normalizeChangeSetInput(args.changes));
+      const text = `# Preview Change Set\n\nChanges: ${result.change_count}\nChanged: ${result.changed}\nDiff stats: +${result.additions} -${result.deletions}${diffBlock(result.diff)}`;
+      return textResult(text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        ...result
+      });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "apply_change_set",
+    {
+      title: "Apply Change Set",
+      description: "Apply a transactional set of text writes and exact replacements after preview-style validation.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        changes: z.array(z.record(z.unknown())).min(1).max(50).describe("Array of write or exact-replacement changes.")
+      },
+      annotations: LOCAL_WRITE_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Applying change set...",
+        "openai/toolInvocation/invoked": "Change set applied"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const started = Date.now();
+      const result = await applyChangeSet(config, guard, workspace, normalizeChangeSetInput(args.changes));
+      await appendJournalEvent(config, guard, workspace, {
+        event: "apply_change_set",
+        status: "ok",
+        paths: result.changes.map((change) => change.path),
+        additions: result.additions,
+        deletions: result.deletions,
+        durationMs: Date.now() - started
+      });
+      const text = `# Apply Change Set\n\nApplied: ${result.applied}\nChanges: ${result.change_count}\nDiff stats: +${result.additions} -${result.deletions}${diffBlock(result.diff)}`;
+      return textResult(text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        ...result
       });
     }
   );
@@ -1306,6 +1430,13 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         cwd: args.cwd,
         timeoutMs: args.timeout_ms,
         sessionId: args.session_id
+      });
+      await appendJournalEvent(config, guard, workspace, {
+        event: "bash",
+        status: result.exitCode === 0 ? "ok" : "error",
+        command: result.command,
+        durationMs: result.durationMs,
+        error: result.exitCode === 0 ? undefined : result.stderr || `exit ${result.exitCode ?? "null"}`
       });
       const text = bashTextResult(config, result);
       return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result, bash_session_id: result.bashSessionId ?? null });
@@ -1458,6 +1589,46 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         deletions: stats.deletions,
         changed: !statusError && (changedFiles.length > 0 || stats.changed),
         diff
+      });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "operation_journal",
+    {
+      title: "Operation Journal",
+      description: "Read recent bounded CodexPro operation journal events for recovery and audit.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        max_events: z.number().int().min(1).max(500).optional().describe("Maximum recent events to return. Default: 50."),
+        event: z.string().optional().describe("Optional event name filter, for example bash or apply_change_set.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Reading operation journal...",
+        "openai/toolInvocation/invoked": "Operation journal ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await readJournalEvents(config, guard, workspace, {
+        maxEvents: limitInt(args.max_events, 50, 1, 500),
+        event: typeof args.event === "string" ? args.event : undefined
+      });
+      const rows = result.events.length
+        ? result.events.map((event) => `- ${event.ts} ${event.status.toUpperCase()} ${event.event} ${event.paths?.join(", ") ?? event.command ?? ""}`.trim()).join("\n")
+        : "- No journal events.";
+      const text = `# Operation Journal\n\nPath: ${result.path}\nEvents returned: ${result.events.length}\nTotal matched: ${result.total_read}\n\n${rows}`;
+      return textResult(text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        path: result.path,
+        events: result.events,
+        event_count: result.events.length,
+        total_read: result.total_read
       });
     }
   );

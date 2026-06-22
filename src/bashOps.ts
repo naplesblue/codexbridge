@@ -4,6 +4,7 @@ import path from "node:path";
 import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, PathGuard } from "./guard.js";
+import { decideCommandPolicy } from "./policy.js";
 import { redactSensitiveText } from "./redact.js";
 
 export interface BashResult {
@@ -18,138 +19,9 @@ export interface BashResult {
   bashSessionId?: string;
 }
 
-const SAFE_ALLOWED_PREFIXES = [
-  "pwd",
-  "ls",
-  "find",
-  "git status",
-  "git diff",
-  "git log",
-  "git show",
-  "git branch",
-  "git rev-parse",
-  "git ls-files",
-  "npm test",
-  "npm run test",
-  "npm run typecheck",
-  "npm run lint",
-  "npm run build",
-  "npm run check",
-  "pnpm test",
-  "pnpm run test",
-  "pnpm run typecheck",
-  "pnpm run lint",
-  "pnpm run build",
-  "pnpm run check",
-  "yarn test",
-  "yarn run test",
-  "yarn run typecheck",
-  "yarn run lint",
-  "yarn run build",
-  "yarn run check",
-  "bun test",
-  "bun run test",
-  "bun run typecheck",
-  "bun run lint",
-  "bun run build",
-  "pytest",
-  "python -m pytest",
-  "python3 -m pytest",
-  "uv run pytest",
-  "go test",
-  "cargo test",
-  "cargo check",
-  "cargo clippy",
-  "tsc",
-  "npx tsc",
-  "eslint",
-  "npx eslint",
-  "biome check",
-  "npx biome check"
-];
-
-const SAFE_BLOCKED_PATTERNS = [
-  /(^|\s)rm\s+/,
-  /(^|\s)mv\s+/,
-  /(^|\s)cp\s+/,
-  /(^|\s)dd\s+/,
-  /(^|\s)sudo\s+/,
-  /(^|\s)chmod\s+/,
-  /(^|\s)chown\s+/,
-  /(^|\s)kill\s+/,
-  /(^|\s)pkill\s+/,
-  /(^|\s)curl\s+/,
-  /(^|\s)wget\s+/,
-  /(^|\s)ssh\s+/,
-  /(^|\s)scp\s+/,
-  /(^|\s)rsync\s+/,
-  /(^|\s)docker\s+/,
-  /(^|\s)podman\s+/,
-  /(^|\s)git\s+push\b/,
-  /(^|\s)git\s+reset\b/,
-  /(^|\s)git\s+clean\b/,
-  /(^|\s)git\s+checkout\b/,
-  /(^|\s)git\s+switch\b/,
-  /(^|\s)git\s+restore\b/,
-  /(^|\s)(npm|pnpm|yarn)\s+publish\b/,
-  /(^|\s)--no-index\b/,
-  /(^|\s)--fix\b/,
-  /(^|\s)(\/|~(?:\/|\s|$))/,
-  /(^|\s)\.\.(?:\/|\s|$)/,
-  /\$(?:[A-Za-z_][A-Za-z0-9_]*|\{|\[)/,
-  /(^|[\s:])(?:\.env(?:[./\s:]|$)|\.git(?:[\/\s:]|$)|node_modules(?:[\/\s:]|$)|\.ssh(?:[\/\s:]|$)|id_rsa(?:[.\s:]|$)|id_ed25519(?:[.\s:]|$)|[^\s:]*\.(?:pem|key)(?:[\s:]|$))/,
-  /(^|\s)-exec\b/,
-  /(^|\s)-execdir\b/,
-  /(^|\s)-delete\b/,
-  /(^|\s)-ok\b/,
-  /(^|\s)-okdir\b/,
-  /(^|\s)-fprint\b/,
-  /(^|\s)-fprintf\b/,
-  /(^|\s)-fls\b/,
-  /(^|\s)(sed|perl)\s+.*(^|\s)-i(\s|$)/,
-  /(^|\s)(cat|grep|rg|head|tail|wc)\s+/,
-  /[;&|<>`]/,
-  /\$\(/,
-  /\n/
-];
-
-function compact(command: string): string {
-  return command.trim().replace(/\s+/g, " ");
-}
-
-function startsWithAllowedPrefix(command: string): boolean {
-  const normalized = compact(command);
-  return isAllowedPackageScript(normalized) || SAFE_ALLOWED_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix} `));
-}
-
-function isAllowedPackageScript(command: string): boolean {
-  const packageScriptPattern =
-    /^(?:npm|pnpm|yarn|bun)\s+run\s+(?:test|typecheck|lint|build|check)(?::[A-Za-z0-9._-]+)*(?:\s+--\s+[A-Za-z0-9._:= -]+)?$/;
-  return packageScriptPattern.test(command);
-}
-
 function assertSafeCommand(config: CodexProConfig, command: string): void {
-  if (config.bashMode === "off") {
-    throw new CodexProError("bash tool is disabled. Start with CODEXPRO_BASH_MODE=safe or CODEXPRO_BASH_MODE=full to enable it.");
-  }
-  if (config.bashMode === "full") return;
-
-  const normalized = compact(command);
-  for (const pattern of SAFE_BLOCKED_PATTERNS) {
-    if (pattern.test(normalized)) {
-      throw new CodexProError(
-        `Command is blocked in CODEXPRO_BASH_MODE=safe: ${normalized}\n` +
-          "Use separate read/search/git tools, or restart with CODEXPRO_BASH_MODE=full only for trusted repos."
-      );
-    }
-  }
-  if (!startsWithAllowedPrefix(normalized)) {
-    throw new CodexProError(
-      `Command is not in the safe bash allowlist: ${normalized}\n` +
-        "Allowed examples: ls, find, git status, git diff, npm test, npm run typecheck, npm run build:clients, pytest, go test, cargo test. Use read/search tools for file contents. " +
-        "Use CODEXPRO_BASH_MODE=full for trusted local automation."
-    );
-  }
+  const decision = decideCommandPolicy(config, command);
+  if (decision.decision === "deny") throw new CodexProError(decision.reason);
 }
 
 function assertBashSession(config: CodexProConfig, sessionId?: string): string | undefined {

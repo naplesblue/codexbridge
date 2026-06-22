@@ -145,7 +145,7 @@ await client.request('initialize', {
 client.notify('notifications/initialized');
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
-for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'bash', 'git_status', 'git_diff', 'show_changes', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'bash', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
   if (!toolNames.includes(expected)) throw new Error(`missing tool: ${expected}`);
 }
 const toolCardUri = 'ui://widget/codexpro-tool-card-v9.html';
@@ -298,9 +298,52 @@ await expectToolError('bash', { workspace_id: ws, command: 'find /tmp' }, /block
 await expectToolError('bash', { workspace_id: ws, command: 'find . -fprint leaked.txt' }, /blocked/i);
 await expectToolError('bash', { workspace_id: ws, command: 'git show HEAD:.env' }, /blocked/i);
 await expectToolError('bash', { workspace_id: ws, command: 'ls $HOME' }, /blocked/i);
+await expectToolError('bash', { workspace_id: ws, command: 'npm install left-pad' }, /Command is not in the safe bash allowlist|policy/i);
 const clientBuild = await client.request('tools/call', { name: 'bash', arguments: { workspace_id: ws, command: 'npm run build:clients', timeout_ms: 60000 } });
 if (!clientBuild.structuredContent.stdout?.includes('clients ok')) {
   throw new Error('safe bash did not run npm run build:clients');
+}
+const previewChangeSet = await client.request('tools/call', {
+  name: 'preview_change_set',
+  arguments: {
+    workspace_id: ws,
+    changes: [
+      { path: 'demo.txt', old_text: 'alpha', new_text: 'ALPHA', expected_replacements: 1 },
+      { path: 'new-notes.md', content: '# Notes\n', create_dirs: true }
+    ]
+  }
+});
+if (previewChangeSet.structuredContent.changed !== true || previewChangeSet.structuredContent.change_count !== 2) {
+  throw new Error(`preview_change_set did not report two changes: ${JSON.stringify(previewChangeSet.structuredContent)}`);
+}
+const applyChangeSet = await client.request('tools/call', {
+  name: 'apply_change_set',
+  arguments: {
+    workspace_id: ws,
+    changes: previewChangeSet.structuredContent.changes
+  }
+});
+if (applyChangeSet.structuredContent.applied !== true) {
+  throw new Error(`apply_change_set did not apply: ${JSON.stringify(applyChangeSet.structuredContent)}`);
+}
+const appliedDemo = await fs.readFile(path.join(tmp, 'demo.txt'), 'utf8');
+if (!appliedDemo.startsWith('ALPHA\n')) {
+  throw new Error(`apply_change_set did not update demo.txt: ${appliedDemo}`);
+}
+await fs.stat(path.join(tmp, 'new-notes.md'));
+await expectToolError('apply_change_set', {
+  workspace_id: ws,
+  changes: [
+    { path: 'demo.txt', old_text: 'missing old text', new_text: 'nope', expected_replacements: 1 }
+  ]
+}, /old_text was not found|change set/i);
+const journal = await client.request('tools/call', {
+  name: 'operation_journal',
+  arguments: { workspace_id: ws, max_events: 30 }
+});
+const eventNames = journal.structuredContent.events.map((event) => event.event);
+for (const expected of ['write', 'edit', 'bash', 'apply_change_set']) {
+  if (!eventNames.includes(expected)) throw new Error(`operation_journal missing ${expected}: ${eventNames.join(', ')}`);
 }
 const exported = await client.request('tools/call', { name: 'export_pro_context', arguments: { workspace_id: ws, selected_paths: ['demo.txt'], max_files: 4, max_total_bytes: 80000 } });
 if (exported.structuredContent.path !== '.ai-bridge/pro-context.md') throw new Error('export_pro_context wrote an unexpected path');
@@ -402,8 +445,8 @@ async function assertToolMode(mode, expected, hidden) {
   modeClient.close();
 }
 
-await assertToolMode('', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'bash', 'show_changes', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexpro_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
-await assertToolMode('minimal', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
+await assertToolMode('', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'bash', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexpro_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
+await assertToolMode('minimal', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
 
 const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp], {
   cwd: path.resolve('.'),

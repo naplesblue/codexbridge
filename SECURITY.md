@@ -117,5 +117,8 @@ CodexPro blocks common sensitive paths by default:
 - common private key names
 - build/cache folders such as `dist`, `build`, `.next`, `coverage`, `.cache`
 - symlinks that resolve outside the workspace or into blocked paths
+- safe bash commands through a shared command policy; unlisted, destructive, network, shell-expansion, and file-reader commands are denied by default
+- transactional change sets with preview, base-hash validation, and rollback for files already written if a later write fails
+- a bounded `.ai-bridge/operation-journal.jsonl` audit trail for successful write/edit/bash/change-set operations
 
 These guards reduce risk. They are not an OS sandbox.

@@ -351,6 +351,8 @@ CodexPro 是本地开发桥，不是操作系统级沙箱。
 - 常见敏感路径会被拒绝：`.env`、私钥、`.git`、`node_modules`、生成目录、缓存目录。
 - symlink 逃逸会被阻止。
 - safe bash 只允许常见检查、搜索、git、lint、test、typecheck、build 等命令。
+- 多文件改动可以先用 `preview_change_set` 预览，再用 `apply_change_set` 应用；应用阶段会重新校验并在写入失败时回滚已写文件。
+- `operation_journal` 会读取 `.ai-bridge/operation-journal.jsonl` 中最近的写入、编辑、bash 和 change set 事件，方便恢复和审计。
 - `codexpro start --no-bash` 会完全关闭 ChatGPT 可调用的 bash 工具。
 - `execute-handoff` 和 `watch-handoff` 是本地 CLI 命令，不是远程 MCP 工具。
 

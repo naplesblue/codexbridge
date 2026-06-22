@@ -6,6 +6,7 @@ import { minimatch } from "minimatch";
 import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, displayPath, normalizeRelPath, PathGuard } from "./guard.js";
+import { decideWritePolicy } from "./policy.js";
 import { hasSecretValue, redactSensitiveText } from "./redact.js";
 
 export interface TreeOptions {
@@ -239,9 +240,12 @@ export async function writeTextFile(
 ): Promise<{ path: string; bytes: number; sha256: string; existed: boolean; diff: DiffResult }> {
   const resolved = guard.resolve(workspace, filePath, { forWrite: true });
   const contentBytes = Buffer.byteLength(content, "utf8");
-  if (contentBytes > config.maxWriteBytes) {
-    throw new CodexProError(`Write content is too large (${contentBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`);
-  }
+  const policy = decideWritePolicy(config, resolved.relPath, contentBytes, {
+    createDirs: options.createDirs,
+    overwrite: options.overwrite,
+    operation: "write"
+  });
+  if (policy.decision === "deny") throw new CodexProError(policy.reason);
   if (hasSecretValue(content)) {
     throw new CodexProError("Secret-looking content is blocked from write. Use placeholders such as [REDACTED_SECRET] in handoff files.");
   }
@@ -305,9 +309,8 @@ export async function editTextFile(
   }
 
   const afterBytes = Buffer.byteLength(after, "utf8");
-  if (afterBytes > config.maxWriteBytes) {
-    throw new CodexProError(`Edited file would be too large (${afterBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`);
-  }
+  const policy = decideWritePolicy(config, resolved.relPath, afterBytes, { operation: "edit" });
+  if (policy.decision === "deny") throw new CodexProError(policy.reason.replace("Write content", "Edited file would be"));
   if (hasSecretValue(after)) {
     throw new CodexProError("Secret-looking content is blocked from edit. Use placeholders such as [REDACTED_SECRET] in handoff files.");
   }

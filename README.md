@@ -160,8 +160,11 @@ Standard mode exposes:
 - `read` — read text files with line numbers.
 - `write` — create/overwrite files and return a diff. Controlled by `CODEXPRO_WRITE_MODE`.
 - `edit` — exact text replacement and return a diff. Controlled by `CODEXPRO_WRITE_MODE`.
+- `preview_change_set` — preview a multi-file transactional text change set without writing files.
+- `apply_change_set` — apply a validated multi-file text change set with base-hash checks and rollback on write failure.
 - `bash` — run allowlisted shell commands in the workspace. Controlled by `CODEXPRO_BASH_MODE`.
 - `show_changes` — one review-oriented summary with git status, diff stats, and optional diff.
+- `operation_journal` — read recent bounded operation events for recovery and audit.
 - `read_handoff` — read `.ai-bridge` files.
 - `export_pro_context` — write `.ai-bridge/pro-context.md` for models that cannot call MCP tools directly.
 - `handoff_to_agent` — write `.ai-bridge/current-plan.md` for Codex, OpenCode, Pi, or a custom local implementation agent without executing local commands.
@@ -1026,13 +1029,19 @@ The launcher defaults to `workspace` in normal coding mode and `handoff` in hand
 
 ## Tool modes
 
-`CODEXPRO_TOOL_MODE=standard` is the default. It exposes the normal coding loop plus `show_changes`, Pro context export, and generic agent handoff.
+`CODEXPRO_TOOL_MODE=standard` is the default. It exposes the normal coding loop plus `show_changes`, transactional change sets, the operation journal, Pro context export, and generic agent handoff.
 
 ```text
 minimal   smallest surface for demos and simple coding: open/read/write/edit/bash/show_changes
-standard  default surface for normal coding plus handoff/export
+standard  default surface for normal coding plus change sets, journal, handoff/export
 full      all tools, including inventory, workspace snapshots, raw git tools, codex_context, and compatibility wrappers
 ```
+
+## Change sets and operation journal
+
+For small and medium coding tasks, prefer `preview_change_set` and `apply_change_set` when a change touches multiple files or when a base hash matters. The preview computes the same diffs as single-file `write` and `edit`, but does not write. Apply revalidates the inputs, writes the files, and rolls back files already written if a later write fails.
+
+CodexPro also writes `.ai-bridge/operation-journal.jsonl` for successful `write`, `edit`, `bash`, and `apply_change_set` tool calls. Use `operation_journal` to inspect recent events, touched paths, commands, diff stats, duration, and errors. This is an audit and recovery aid, not a replacement for git history.
 
 Launcher examples:
 
