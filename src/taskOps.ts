@@ -1,6 +1,6 @@
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
-import { CodexProError, PathGuard } from "./guard.js";
+import { CodexBridgeError, PathGuard } from "./guard.js";
 import { repoTree } from "./fsOps.js";
 import { gitDiff, gitStatus } from "./gitOps.js";
 import { readCodexContext } from "./workspaceOps.js";
@@ -83,13 +83,13 @@ function overallDecision(actions: ApprovalActionResult[]): PolicyDecisionKind {
 }
 
 export async function buildTaskBrief(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   options: { goal: string; targetPath?: string; includeDiff?: boolean; includeTree?: boolean }
 ): Promise<TaskBriefResult> {
   const goal = options.goal.trim();
-  if (!goal) throw new CodexProError("goal is required.");
+  if (!goal) throw new CodexBridgeError("goal is required.");
   const targetPath = options.targetPath?.trim() || ".";
   const context = await readCodexContext(config, guard, workspace, {
     targetPath,
@@ -116,17 +116,17 @@ export async function buildTaskBrief(
 }
 
 export async function reviewApprovalActions(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   actions: Array<{ type: "command"; command: string } | { type: "change_set"; changes: ChangeSetInput[] }>
 ): Promise<ApprovalReviewResult> {
-  if (!actions.length) throw new CodexProError("actions must contain at least one action.");
+  if (!actions.length) throw new CodexBridgeError("actions must contain at least one action.");
   const reviewed: ApprovalActionResult[] = [];
   for (const action of actions) {
     if (action.type === "command") {
       const command = action.command.trim();
-      if (!command) throw new CodexProError("command action requires command.");
+      if (!command) throw new CodexBridgeError("command action requires command.");
       const policy = decideCommandPolicy(config, command);
       reviewed.push({
         type: "command",
@@ -166,13 +166,13 @@ export async function reviewApprovalActions(
 }
 
 export async function buildTaskPlan(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   options: { goal: string; targetPaths?: string[]; proposedCommands?: string[]; proposedChanges?: ChangeSetInput[] }
 ): Promise<TaskPlanResult> {
   const goal = options.goal.trim();
-  if (!goal) throw new CodexProError("goal is required.");
+  if (!goal) throw new CodexBridgeError("goal is required.");
   const targetPaths = (options.targetPaths ?? []).map((item) => item.trim()).filter(Boolean);
   const commands = (options.proposedCommands ?? []).map((item) => item.trim()).filter(Boolean);
   const commandPolicies = commands.map((command) => ({ command, policy: decideCommandPolicy(config, command) }));
@@ -228,7 +228,7 @@ export async function buildTaskPlan(
 }
 
 export async function buildTaskReport(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   options: { includeDiff: boolean; maxEvents: number },

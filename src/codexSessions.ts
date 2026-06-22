@@ -3,8 +3,8 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import type { CodexProConfig } from "./config.js";
-import { CodexProError } from "./guard.js";
+import type { CodexBridgeConfig } from "./config.js";
+import { CodexBridgeError } from "./guard.js";
 
 const CODEX_IDE_CONTEXT_PREFIX = "# Context from my IDE setup:";
 const CODEX_REQUEST_MARKER = "my request for codex";
@@ -44,21 +44,21 @@ export interface CodexSessionReadResult {
   text: string;
 }
 
-function codexDir(config: CodexProConfig): string {
+function codexDir(config: CodexBridgeConfig): string {
   return path.resolve(config.codexDir || path.join(os.homedir(), ".codex"));
 }
 
-function sessionRoots(config: CodexProConfig): string[] {
+function sessionRoots(config: CodexBridgeConfig): string[] {
   const root = codexDir(config);
   return [path.join(root, "sessions"), path.join(root, "archived_sessions")];
 }
 
-function ensureEnabled(config: CodexProConfig, read = false): void {
+function ensureEnabled(config: CodexBridgeConfig, read = false): void {
   if (config.codexSessions === "off") {
-    throw new CodexProError("Codex session tools are disabled. Start with --codex-sessions metadata or --codex-sessions read to opt in.");
+    throw new CodexBridgeError("Codex session tools are disabled. Start with --codex-sessions metadata or --codex-sessions read to opt in.");
   }
   if (read && config.codexSessions !== "read") {
-    throw new CodexProError("Reading Codex session transcripts is disabled. Start with --codex-sessions read to opt in.");
+    throw new CodexBridgeError("Reading Codex session transcripts is disabled. Start with --codex-sessions read to opt in.");
   }
 }
 
@@ -176,7 +176,7 @@ function codexRequestHeadingPayload(line: string): string | null {
   return suffix.replace(/^[:：\-—\s]+/, "").trim();
 }
 
-function extractCodexPromptFromIdeContext(text: string): string | undefined {
+function extractCodexBridgemptFromIdeContext(text: string): string | undefined {
   const trimmed = text.trim();
   if (!trimmed.startsWith(CODEX_IDE_CONTEXT_PREFIX)) return undefined;
   const lines = trimmed.replace(/\r\n/g, "\n").split("\n");
@@ -197,7 +197,7 @@ function extractCodexPromptFromIdeContext(text: string): string | undefined {
 function titleCandidateFromUserMessage(text: string): string | undefined {
   const trimmed = text.trim();
   if (!trimmed || trimmed.startsWith("# AGENTS.md") || trimmed.startsWith("<environment_context>")) return undefined;
-  if (trimmed.startsWith(CODEX_IDE_CONTEXT_PREFIX)) return extractCodexPromptFromIdeContext(trimmed);
+  if (trimmed.startsWith(CODEX_IDE_CONTEXT_PREFIX)) return extractCodexBridgemptFromIdeContext(trimmed);
   return trimmed;
 }
 
@@ -271,7 +271,7 @@ async function parseSessionMeta(filePath: string): Promise<CodexSessionMeta | un
   };
 }
 
-async function collectSessionMetas(config: CodexProConfig): Promise<CodexSessionMeta[]> {
+async function collectSessionMetas(config: CodexBridgeConfig): Promise<CodexSessionMeta[]> {
   const files: string[] = [];
   for (const root of sessionRoots(config)) {
     await collectJsonlFiles(root, files, 6, 3000);
@@ -286,7 +286,7 @@ async function collectSessionMetas(config: CodexProConfig): Promise<CodexSession
 }
 
 export async function listCodexSessions(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   options: { maxSessions?: number; query?: string } = {}
 ): Promise<CodexSessionListResult> {
   ensureEnabled(config);
@@ -314,7 +314,7 @@ export async function listCodexSessions(
   };
 }
 
-async function resolveSessionSource(config: CodexProConfig, sessionId?: string, sourcePath?: string): Promise<CodexSessionMeta> {
+async function resolveSessionSource(config: CodexBridgeConfig, sessionId?: string, sourcePath?: string): Promise<CodexSessionMeta> {
   ensureEnabled(config, true);
   const roots = sessionRoots(config).map((root) => path.resolve(root));
 
@@ -322,25 +322,25 @@ async function resolveSessionSource(config: CodexProConfig, sessionId?: string, 
     const resolved = path.resolve(sourcePath);
     const canonical = await fsp.realpath(resolved).catch(() => resolved);
     if (!roots.some((root) => isSubpath(canonical, root))) {
-      throw new CodexProError("Codex session source_path is outside configured Codex session roots.");
+      throw new CodexBridgeError("Codex session source_path is outside configured Codex session roots.");
     }
     const meta = await parseSessionMeta(canonical);
-    if (!meta) throw new CodexProError("Could not parse Codex session metadata from source_path.");
-    if (sessionId && meta.session_id !== sessionId) throw new CodexProError("Codex session id does not match source_path.");
+    if (!meta) throw new CodexBridgeError("Could not parse Codex session metadata from source_path.");
+    if (sessionId && meta.session_id !== sessionId) throw new CodexBridgeError("Codex session id does not match source_path.");
     return meta;
   }
 
-  if (!sessionId) throw new CodexProError("session_id or source_path is required.");
+  if (!sessionId) throw new CodexBridgeError("session_id or source_path is required.");
   const sessions = await collectSessionMetas(config);
   const match = sessions.find((session) => session.session_id === sessionId);
-  if (!match) throw new CodexProError(`Codex session not found: ${sessionId}`);
+  if (!match) throw new CodexBridgeError(`Codex session not found: ${sessionId}`);
   return match;
 }
 
 async function loadSessionMessages(filePath: string, maxMessages: number, maxTotalBytes: number): Promise<{ messages: CodexSessionMessage[]; truncated: boolean }> {
   const size = statSync(filePath).size;
   if (size > 20_000_000) {
-    throw new CodexProError(`Codex session file is too large (${size} bytes).`);
+    throw new CodexBridgeError(`Codex session file is too large (${size} bytes).`);
   }
 
   const messages: CodexSessionMessage[] = [];
@@ -381,7 +381,7 @@ async function loadSessionMessages(filePath: string, maxMessages: number, maxTot
 }
 
 export async function readCodexSession(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   options: { sessionId?: string; sourcePath?: string; maxMessages?: number; maxTotalBytes?: number } = {}
 ): Promise<CodexSessionReadResult> {
   const session = await resolveSessionSource(config, options.sessionId, options.sourcePath);

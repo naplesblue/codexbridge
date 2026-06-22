@@ -60,7 +60,7 @@ class McpStdioClient {
   }
 }
 
-const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-smoke-'));
+const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-smoke-'));
 await fs.writeFile(path.join(tmp, 'demo.txt'), 'alpha\nread\nread\nomega\n', 'utf8');
 await fs.writeFile(path.join(tmp, 'config.txt'), 'OPENAI_API_KEY=sk-realSecretValue123\n', 'utf8');
 await fs.writeFile(path.join(tmp, 'AGENTS.md'), '# Smoke Agents\n\n- Preserve demo.txt.\n', 'utf8');
@@ -112,7 +112,7 @@ await fs.writeFile(path.join(tmp, 'package.json'), JSON.stringify({
     'build:clients': "node -e \"console.log('clients ok')\""
   }
 }, null, 2), 'utf8');
-const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-outside-'));
+const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-outside-'));
 await fs.writeFile(path.join(outside, 'secret.txt'), 'do-not-read', 'utf8');
 let symlinkEscapePath = 'secret-link.txt';
 try {
@@ -141,22 +141,26 @@ const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--al
 if (packageJson.name !== 'codexbridge') {
   throw new Error(`package name should be codexbridge, got ${packageJson.name}`);
 }
-for (const expectedBin of ['codexbridge', 'codexbridge-mcp', 'codexbridge-mcp-http', 'codexpro', 'codexpro-mcp', 'codexpro-mcp-http']) {
+for (const expectedBin of ['codexbridge', 'codexbridge-mcp', 'codexbridge-mcp-http']) {
   if (!packageJson.bin?.[expectedBin]) throw new Error(`package bin missing ${expectedBin}`);
+}
+const removedProjectName = 'codex' + 'pro';
+for (const removedBin of [removedProjectName, `${removedProjectName}-mcp`, `${removedProjectName}-mcp-http`]) {
+  if (packageJson.bin?.[removedBin]) throw new Error(`package bin should be removed: ${removedBin}`);
 }
 
 await client.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-smoke', version: '0.1.0' }
 });
 client.notify('notifications/initialized');
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
-for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
   if (!toolNames.includes(expected)) throw new Error(`missing tool: ${expected}`);
 }
-const toolCardUri = 'ui://widget/codexpro-tool-card-v9.html';
+const toolCardUri = 'ui://widget/codexbridge-tool-card-v1.html';
 const toolsByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
 function hasWidgetMeta(name) {
   const meta = toolsByName.get(name)?._meta ?? {};
@@ -173,7 +177,7 @@ async function expectToolError(name, args, pattern, targetClient = client) {
   }
 }
 for (const visualTool of toolNames) {
-  if (!hasWidgetMeta(visualTool)) throw new Error(`${visualTool} should render the CodexPro widget`);
+  if (!hasWidgetMeta(visualTool)) throw new Error(`${visualTool} should render the CodexBridge widget`);
 }
 const resources = await client.request('resources/list', {});
 const toolCard = resources.resources.find((resource) => resource.uri === toolCardUri);
@@ -194,23 +198,23 @@ if (widgetMeta.ui?.domain !== 'https://widgets.codexbridge.test' || widgetMeta['
 const current = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
 const realTmp = await fs.realpath(tmp);
 if (current.structuredContent.root !== realTmp) throw new Error(`open_current_workspace opened ${current.structuredContent.root}, expected ${realTmp}`);
-if (current.structuredContent.codexpro_tool !== 'open_current_workspace') throw new Error('tool result was not tagged for widget rendering');
+if (current.structuredContent.codexbridge_tool !== 'open_current_workspace') throw new Error('tool result was not tagged for widget rendering');
 if (current.structuredContent.tool_mode !== 'full') throw new Error(`open_current_workspace did not expose tool_mode: ${current.structuredContent.tool_mode}`);
 if (!current.structuredContent.skill_inventory?.some?.((skill) => skill.name === 'smoke-skill')) {
   throw new Error('open_current_workspace did not discover workspace skill inventory');
 }
 const selfTest = await client.request('tools/call', {
-  name: 'codexpro_self_test',
+  name: 'codexbridge_self_test',
   arguments: {
     workspace_id: current.structuredContent.workspace_id,
     max_skills: 12
   }
 });
-if (selfTest.structuredContent.status === 'fail' || !selfTest.structuredContent.expected_tools?.includes?.('codexpro_self_test')) {
-  throw new Error(`codexpro_self_test failed: ${JSON.stringify(selfTest.structuredContent)}`);
+if (selfTest.structuredContent.status === 'fail' || !selfTest.structuredContent.expected_tools?.includes?.('codexbridge_self_test')) {
+  throw new Error(`codexbridge_self_test failed: ${JSON.stringify(selfTest.structuredContent)}`);
 }
-if (!selfTest.structuredContent.files_touched?.includes?.('.ai-bridge/codexpro-self-test.md')) {
-  throw new Error('codexpro_self_test did not run the .ai-bridge write/edit probe');
+if (!selfTest.structuredContent.files_touched?.includes?.('.ai-bridge/codexbridge-self-test.md')) {
+  throw new Error('codexbridge_self_test did not run the .ai-bridge write/edit probe');
 }
 const snapshotAlias = await client.request('tools/call', {
   name: 'workspace_snapshot',
@@ -237,8 +241,8 @@ if (loadedSkill.structuredContent.skill?.name !== 'smoke-skill' || !loadedSkill.
   throw new Error('load_skill did not return bounded SKILL.md content for smoke-skill');
 }
 await expectToolError('load_skill', { name: 'missing-skill' }, /Skill not found/);
-const inventory = await client.request('tools/call', { name: 'codexpro_inventory', arguments: { include_global_skills: false, include_mcp_servers: false } });
-if (inventory.structuredContent.codexpro_tool !== 'codexpro_inventory') throw new Error('inventory result was not tagged for widget rendering');
+const inventory = await client.request('tools/call', { name: 'codexbridge_inventory', arguments: { include_global_skills: false, include_mcp_servers: false } });
+if (inventory.structuredContent.codexbridge_tool !== 'codexbridge_inventory') throw new Error('inventory result was not tagged for widget rendering');
 const opened = await client.request('tools/call', { name: 'open_workspace', arguments: { root: tmp, include_tree: true } });
 const ws = opened.structuredContent.workspace_id;
 const openedByPath = await client.request('tools/call', { name: 'open_workspace', arguments: { path: tmp, include_tree: false } });
@@ -516,7 +520,7 @@ const modeClient = new McpStdioClient('node', args, {
   await modeClient.request('initialize', {
     protocolVersion: '2024-11-05',
     capabilities: {},
-    clientInfo: { name: `codexpro-${mode || 'default'}-smoke`, version: '0.1.0' }
+    clientInfo: { name: `codexbridge-${mode || 'default'}-smoke`, version: '0.1.0' }
   });
   modeClient.notify('notifications/initialized');
   const modeTools = await modeClient.request('tools/list', {});
@@ -530,8 +534,8 @@ const modeClient = new McpStdioClient('node', args, {
   modeClient.close();
 }
 
-await assertToolMode('', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexpro_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
-await assertToolMode('minimal', ['server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
+await assertToolMode('', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexbridge_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
+await assertToolMode('minimal', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
 
 const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp], {
   cwd: path.resolve('.'),
@@ -546,7 +550,7 @@ const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js',
 await standardCodexSessionsClient.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-standard-codex-sessions-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-standard-codex-sessions-smoke', version: '0.1.0' }
 });
 standardCodexSessionsClient.notify('notifications/initialized');
 const standardCodexSessionTools = await standardCodexSessionsClient.request('tools/list', {});
@@ -566,7 +570,7 @@ const fullTranscriptClient = new McpStdioClient('node', ['dist/stdio.js', '--roo
 await fullTranscriptClient.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-full-bash-transcript-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-full-bash-transcript-smoke', version: '0.1.0' }
 });
 fullTranscriptClient.notify('notifications/initialized');
 const fullTranscriptBash = await fullTranscriptClient.request('tools/call', { name: 'bash', arguments: { command: 'pwd' } });
@@ -580,21 +584,21 @@ const emptyCodexDirClient = new McpStdioClient('node', ['dist/stdio.js', '--root
   cwd: path.resolve('.'),
   env: {
     ...process.env,
-    CODEXPRO_ROOT: tmp,
-    CODEXPRO_ALLOWED_ROOTS: tmp,
-    CODEXPRO_CODEX_DIR: ''
+    CODEXBRIDGE_ROOT: tmp,
+    CODEXBRIDGE_ALLOWED_ROOTS: tmp,
+    CODEXBRIDGE_CODEX_DIR: ''
   }
 });
 await emptyCodexDirClient.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-empty-codex-dir-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-empty-codex-dir-smoke', version: '0.1.0' }
 });
 emptyCodexDirClient.notify('notifications/initialized');
 const emptyCodexDirConfig = await emptyCodexDirClient.request('tools/call', { name: 'server_config', arguments: {} });
 const expectedDefaultCodexDir = path.join(os.homedir(), '.codex');
 if (emptyCodexDirConfig.structuredContent.codexDir !== expectedDefaultCodexDir) {
-  throw new Error(`empty CODEXPRO_CODEX_DIR resolved to ${emptyCodexDirConfig.structuredContent.codexDir}, expected ${expectedDefaultCodexDir}`);
+  throw new Error(`empty CODEXBRIDGE_CODEX_DIR resolved to ${emptyCodexDirConfig.structuredContent.codexDir}, expected ${expectedDefaultCodexDir}`);
 }
 emptyCodexDirClient.close();
 
@@ -602,16 +606,16 @@ const codexSessionsClient = new McpStdioClient('node', ['dist/stdio.js', '--root
   cwd: path.resolve('.'),
   env: {
     ...process.env,
-    CODEXPRO_ROOT: tmp,
-    CODEXPRO_ALLOWED_ROOTS: tmp,
-    CODEXPRO_CODEX_SESSIONS: 'read',
-    CODEXPRO_CODEX_DIR: codexHistoryDir
+    CODEXBRIDGE_ROOT: tmp,
+    CODEXBRIDGE_ALLOWED_ROOTS: tmp,
+    CODEXBRIDGE_CODEX_SESSIONS: 'read',
+    CODEXBRIDGE_CODEX_DIR: codexHistoryDir
   }
 });
 await codexSessionsClient.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-codex-sessions-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-codex-sessions-smoke', version: '0.1.0' }
 });
 codexSessionsClient.notify('notifications/initialized');
 const codexSessionTools = await codexSessionsClient.request('tools/list', {});
@@ -669,16 +673,16 @@ const sessionGuardClient = new McpStdioClient('node', [
   cwd: path.resolve('.'),
   env: {
     ...process.env,
-    CODEXPRO_ROOT: tmp,
-    CODEXPRO_ALLOWED_ROOTS: tmp,
-    CODEXPRO_BASH_SESSION_ID: '',
-    CODEXPRO_REQUIRE_BASH_SESSION: ''
+    CODEXBRIDGE_ROOT: tmp,
+    CODEXBRIDGE_ALLOWED_ROOTS: tmp,
+    CODEXBRIDGE_BASH_SESSION_ID: '',
+    CODEXBRIDGE_REQUIRE_BASH_SESSION: ''
   }
 });
 await sessionGuardClient.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-bash-session-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-bash-session-smoke', version: '0.1.0' }
 });
 sessionGuardClient.notify('notifications/initialized');
 const guardedConfig = await sessionGuardClient.request('tools/call', { name: 'server_config', arguments: {} });
@@ -692,24 +696,24 @@ if (guardedBash.structuredContent.bash_session_id !== 'codex-main' || !guardedBa
   throw new Error(`bash session guard did not allow matching session id: ${JSON.stringify(guardedBash.structuredContent)}`);
 }
 const guardedSelfTest = await sessionGuardClient.request('tools/call', {
-  name: 'codexpro_self_test',
+  name: 'codexbridge_self_test',
   arguments: { write_probe: false, pro_context_probe: false }
 });
 if (guardedSelfTest.structuredContent.status === 'fail') {
-  throw new Error(`codexpro_self_test failed under bash session guard: ${JSON.stringify(guardedSelfTest.structuredContent.checks)}`);
+  throw new Error(`codexbridge_self_test failed under bash session guard: ${JSON.stringify(guardedSelfTest.structuredContent.checks)}`);
 }
 sessionGuardClient.close();
 
-const nonGitRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-non-git-'));
+const nonGitRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-non-git-'));
 await fs.writeFile(path.join(nonGitRoot, 'README.md'), '# Non-git fixture\n', 'utf8');
 const nonGitClient = new McpStdioClient('node', ['dist/stdio.js', '--root', nonGitRoot, '--allow-root', nonGitRoot, '--tool-mode', 'full'], {
   cwd: path.resolve('.'),
-  env: { ...process.env, CODEXPRO_ROOT: nonGitRoot, CODEXPRO_ALLOWED_ROOTS: nonGitRoot }
+  env: { ...process.env, CODEXBRIDGE_ROOT: nonGitRoot, CODEXBRIDGE_ALLOWED_ROOTS: nonGitRoot }
 });
 await nonGitClient.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-non-git-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-non-git-smoke', version: '0.1.0' }
 });
 nonGitClient.notify('notifications/initialized');
 const nonGitDiff = await nonGitClient.request('tools/call', { name: 'git_diff', arguments: { include_diff: false } });
@@ -722,18 +726,18 @@ if (!/not a git repository|git unavailable|fatal:/i.test(nonGitPayload)) {
 }
 nonGitClient.close();
 
-const lowerAgentsRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-lower-agents-'));
+const lowerAgentsRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-lower-agents-'));
 await fs.writeFile(path.join(lowerAgentsRoot, 'agents.md'), '# Lowercase agents\n\n- Lowercase instruction file loaded.\n', 'utf8');
 await fs.mkdir(path.join(lowerAgentsRoot, 'src'));
 await fs.writeFile(path.join(lowerAgentsRoot, 'src', 'demo.ts'), 'export const demo = true;\n', 'utf8');
 const lowerClient = new McpStdioClient('node', ['dist/stdio.js', '--root', lowerAgentsRoot, '--allow-root', lowerAgentsRoot, '--tool-mode', 'full'], {
   cwd: path.resolve('.'),
-  env: { ...process.env, CODEXPRO_ROOT: lowerAgentsRoot, CODEXPRO_ALLOWED_ROOTS: lowerAgentsRoot }
+  env: { ...process.env, CODEXBRIDGE_ROOT: lowerAgentsRoot, CODEXBRIDGE_ALLOWED_ROOTS: lowerAgentsRoot }
 });
 await lowerClient.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
-  clientInfo: { name: 'codexpro-lower-agents-smoke', version: '0.1.0' }
+  clientInfo: { name: 'codexbridge-lower-agents-smoke', version: '0.1.0' }
 });
 lowerClient.notify('notifications/initialized');
 const lowerOpened = await lowerClient.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });

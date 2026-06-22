@@ -54,21 +54,8 @@ export interface RuntimeConnection {
 }
 
 export function codexBridgeHome(): string {
-  const customHome = process.env.CODEXBRIDGE_HOME ?? process.env.CODEXPRO_HOME;
+  const customHome = process.env.CODEXBRIDGE_HOME;
   return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), ".codexbridge");
-}
-
-export function codexProHome(): string {
-  return codexBridgeHome();
-}
-
-function legacyCodexProHome(): string {
-  const customHome = process.env.CODEXPRO_HOME;
-  return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), ".codexpro");
-}
-
-function homeCandidates(): string[] {
-  return [...new Set([codexBridgeHome(), legacyCodexProHome()])];
 }
 
 export function profileDir(): string {
@@ -101,15 +88,9 @@ function readJsonFile(filePath: string): unknown {
 }
 
 export function readWorkspaceProfile(root: string): WorkspaceProfile {
-  let profilePath = "";
-  for (const home of homeCandidates()) {
-    const candidate = path.join(home, "profiles", `${profileIdForRoot(root)}.json`);
-    if (fs.existsSync(candidate)) {
-      profilePath = candidate;
-      break;
-    }
-  }
+  const profilePath = profilePathForRoot(root);
   if (!profilePath) return {};
+  if (!fs.existsSync(profilePath)) return {};
   const profile = readJsonFile(profilePath);
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) return {};
   const typed = profile as WorkspaceProfile;
@@ -148,15 +129,9 @@ export function sanitizeWorkspaceProfile(profile: WorkspaceProfile): WorkspacePr
 }
 
 export function readRuntimeConnection(root: string): RuntimeConnection {
-  let runtimePath = "";
-  for (const home of homeCandidates()) {
-    const candidate = path.join(home, "runtime", `${profileIdForRoot(root)}.json`);
-    if (fs.existsSync(candidate)) {
-      runtimePath = candidate;
-      break;
-    }
-  }
+  const runtimePath = runtimeStatusPathForRoot(root);
   if (!runtimePath) return {};
+  if (!fs.existsSync(runtimePath)) return {};
   const runtime = readJsonFile(runtimePath);
   if (!runtime || typeof runtime !== "object" || Array.isArray(runtime)) return {};
   const typed = runtime as RuntimeConnection;

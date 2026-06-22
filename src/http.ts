@@ -6,7 +6,7 @@ import cors from "cors";
 import { z } from "zod";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { loadConfig, type CodexProConfig } from "./config.js";
+import { loadConfig, type CodexBridgeConfig } from "./config.js";
 import {
   profilePathForRoot,
   readRuntimeConnection,
@@ -17,7 +17,7 @@ import {
   type TunnelMode,
   type WorkspaceProfile
 } from "./profileStore.js";
-import { createCodexProServer } from "./server.js";
+import { createCodexBridgeServer } from "./server.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -111,10 +111,6 @@ function envValue(...names: string[]): string | undefined {
   for (const name of names) {
     const value = process.env[name];
     if (value !== undefined && value !== "") return value;
-    if (name.startsWith("CODEXBRIDGE_")) {
-      const legacy = process.env[`CODEXPRO_${name.slice("CODEXBRIDGE_".length)}`];
-      if (legacy !== undefined && legacy !== "") return legacy;
-    }
   }
   return undefined;
 }
@@ -148,7 +144,7 @@ function normalizeWidgetDomain(value: string | undefined): string {
   return url.origin;
 }
 
-function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(config.defaultRoot)): ProfileFormValues {
+function profileValues(config: CodexBridgeConfig, profile = readWorkspaceProfile(config.defaultRoot)): ProfileFormValues {
   const hostname =
     profile.hostname ??
     envValue("CODEXBRIDGE_PUBLIC_HOSTNAME") ??
@@ -226,7 +222,7 @@ function currentTunnelMessage(tunnel: TunnelMode, endpoint: string): string {
   return "No public tunnel is saved; local MCP clients can use the local URL.";
 }
 
-function profileForm(config: CodexProConfig): string {
+function profileForm(config: CodexBridgeConfig): string {
   const profile = readWorkspaceProfile(config.defaultRoot);
   const values = profileValues(config, profile);
   const runtime = readRuntimeConnection(config.defaultRoot);
@@ -309,7 +305,7 @@ function profileForm(config: CodexProConfig): string {
     </section>`;
 }
 
-function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile, input: AdminProfilePatch): WorkspaceProfile {
+function buildProfilePayload(config: CodexBridgeConfig, existing: WorkspaceProfile, input: AdminProfilePatch): WorkspaceProfile {
   const current = profileValues(config, existing);
   const next: ProfileFormValues = {
     ...current,
@@ -353,7 +349,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
   };
 }
 
-function profileResponse(config: CodexProConfig): Record<string, unknown> {
+function profileResponse(config: CodexBridgeConfig): Record<string, unknown> {
   const profile = readWorkspaceProfile(config.defaultRoot);
   const runtime = readRuntimeConnection(config.defaultRoot);
   return {
@@ -390,7 +386,7 @@ const LOCAL_FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 6
   <path d="M38.4 40.3c-1.8 1.1-3.9 1.7-6.3 1.7-6.1 0-10.3-4.2-10.3-10s4.2-10 10.4-10c2.4 0 4.5.6 6.2 1.7l-2.1 4.1c-1.1-.7-2.3-1-3.8-1-2.9 0-4.9 2.1-4.9 5.2s2 5.2 4.9 5.2c1.5 0 2.8-.4 3.9-1.1l2 4.2Z" fill="#ffffff"/>
 </svg>`;
 
-function onboardingPage(config: CodexProConfig): string {
+function onboardingPage(config: CodexBridgeConfig): string {
   const localMcp = `http://${config.host}:${config.port}/mcp`;
   const localMcpDisplay = config.authToken ? `${localMcp}?codexbridge_token=<redacted>` : localMcp;
   const allowedRoots = config.allowedRoots.map((root) => `<li>${escapeHtml(root)}</li>`).join("");
@@ -1275,12 +1271,12 @@ function onboardingPage(config: CodexProConfig): string {
         if (button.getAttribute("data-copy-kind") === "local-mcp") {
           const base = button.getAttribute("data-copy-base") || value;
           const params = new URLSearchParams(window.location.search);
-          const token = params.get("codexbridge_token") || params.get("codexpro_token") || params.get("token") || "";
+          const token = params.get("codexbridge_token") || params.get("token") || "";
           value = token ? base + "?codexbridge_token=" + encodeURIComponent(token) : base;
         } else if (button.getAttribute("data-copy-kind") === "server-url") {
           const base = button.getAttribute("data-copy-base") || value;
           const params = new URLSearchParams(window.location.search);
-          const token = params.get("codexbridge_token") || params.get("codexpro_token") || params.get("token") || "";
+          const token = params.get("codexbridge_token") || params.get("token") || "";
           value = token ? base + "?codexbridge_token=" + encodeURIComponent(token) : base;
         }
         try {
@@ -1386,7 +1382,7 @@ async function main(): Promise<void> {
   }
 
   const app = express();
-  const logRequests = process.env.CODEXBRIDGE_LOG_REQUESTS === "1" || process.env.CODEXPRO_LOG_REQUESTS === "1";
+  const logRequests = process.env.CODEXBRIDGE_LOG_REQUESTS === "1";
 
   function tokenMatches(value: unknown): boolean {
     if (!config.authToken || typeof value !== "string") return false;
@@ -1449,9 +1445,7 @@ async function main(): Promise<void> {
       : undefined;
     const queryToken = typeof req.query.codexbridge_token === "string"
       ? req.query.codexbridge_token
-      : typeof req.query.codexpro_token === "string"
-        ? req.query.codexpro_token
-        : typeof req.query.token === "string"
+      : typeof req.query.token === "string"
           ? req.query.token
           : undefined;
     if (!tokenMatches(bearer) && !tokenMatches(queryToken)) {
@@ -1586,7 +1580,7 @@ async function main(): Promise<void> {
           if (closedSessionId) transports.delete(closedSessionId);
         };
 
-        const server = createCodexProServer(config);
+        const server = createCodexBridgeServer(config);
         await server.connect(transport);
       } else {
         res.status(400).json({

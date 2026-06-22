@@ -72,7 +72,7 @@ async function waitForHealthJson(url, timeoutMs = 15000) {
 }
 
 async function expectHttpTokenRequired(name, overrides = {}) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), `codexpro-http-no-token-${name}-`));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), `codexbridge-http-no-token-${name}-`));
   const port = await getFreePort();
   const env = {
     ...process.env,
@@ -85,10 +85,10 @@ async function expectHttpTokenRequired(name, overrides = {}) {
     ...overrides
   };
   delete env.CODEXBRIDGE_HTTP_TOKEN;
-  delete env.CODEXPRO_HTTP_TOKEN;
+  delete env.CODEXBRIDGE_HTTP_TOKEN;
   delete env.CODEBASE_BRIDGE_HTTP_TOKEN;
   delete env.CODEXBRIDGE_ALLOW_NO_HTTP_TOKEN;
-  delete env.CODEXPRO_ALLOW_NO_HTTP_TOKEN;
+  delete env.CODEXBRIDGE_ALLOW_NO_HTTP_TOKEN;
 
   const child = spawn('node', ['dist/http.js'], {
     cwd: path.resolve('.'),
@@ -105,7 +105,7 @@ async function expectHttpTokenRequired(name, overrides = {}) {
 }
 
 async function listTools(url, token) {
-  const client = new Client({ name: 'codexpro-http-smoke', version: '0.0.0' });
+  const client = new Client({ name: 'codexbridge-http-smoke', version: '0.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
   });
@@ -132,7 +132,7 @@ await expectHttpTokenRequired('non-loopback', { CODEXBRIDGE_HOST: '0.0.0.0' });
 await expectHttpTokenRequired('tunnel-mode', { CODEXBRIDGE_TUNNEL_MODE: '1' });
 
 async function withClient(url, fn) {
-  const client = new Client({ name: 'codexpro-http-smoke', version: '0.0.0' });
+  const client = new Client({ name: 'codexbridge-http-smoke', version: '0.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(url));
   try {
     await client.connect(transport);
@@ -151,8 +151,8 @@ async function callTool(client, name, args = {}) {
   return result;
 }
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-http-smoke-'));
-const profileHome = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-http-profile-home-'));
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-http-smoke-'));
+const profileHome = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-http-profile-home-'));
 await fs.mkdir(path.join(root, '.codex', 'skills', 'http-smoke-skill'), { recursive: true });
 await fs.writeFile(path.join(root, '.codex', 'skills', 'http-smoke-skill', 'SKILL.md'), [
   '---',
@@ -289,15 +289,15 @@ try {
 
   const queryTools = await listTools(`${baseUrl}/mcp?codexbridge_token=${encodeURIComponent(token)}`);
   const queryToolNames = toolNames(queryTools);
-  for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'load_skill', 'show_changes', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+  for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'load_skill', 'show_changes', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
     if (!queryToolNames.includes(expected)) {
       throw new Error(`URL-token MCP tools/list missing ${expected}; got ${queryToolNames.join(', ')}`);
     }
   }
-  const toolCardUri = 'ui://widget/codexpro-tool-card-v9.html';
+  const toolCardUri = 'ui://widget/codexbridge-tool-card-v1.html';
   for (const visualTool of queryToolNames) {
     if (!hasWidgetMeta(queryTools, visualTool, toolCardUri)) {
-      throw new Error(`${visualTool} should render the CodexPro widget`);
+      throw new Error(`${visualTool} should render the CodexBridge widget`);
     }
   }
 
@@ -331,7 +331,7 @@ try {
 
   const currentOpened = await withClient(mcpUrl, async (client) => {
     const result = await callTool(client, 'open_current_workspace', { include_tree: false });
-    if (result.structuredContent.codexpro_tool !== 'open_current_workspace') {
+    if (result.structuredContent.codexbridge_tool !== 'open_current_workspace') {
       throw new Error('HTTP tool result was not tagged for widget rendering');
     }
     if (result.structuredContent.tool_mode !== 'full') {
@@ -344,11 +344,11 @@ try {
   });
 
   await withClient(mcpUrl, async (client) => {
-    const inventory = await callTool(client, 'codexpro_inventory', {
+    const inventory = await callTool(client, 'codexbridge_inventory', {
       include_global_skills: false,
       include_mcp_servers: false
     });
-    if (inventory.structuredContent.codexpro_tool !== 'codexpro_inventory') {
+    if (inventory.structuredContent.codexbridge_tool !== 'codexbridge_inventory') {
       throw new Error('HTTP inventory result was not tagged for widget rendering');
     }
     const loadedSkill = await callTool(client, 'load_skill', {
@@ -413,7 +413,7 @@ try {
   child.kill('SIGTERM');
 }
 
-const cliRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cli-http-smoke-'));
+const cliRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-cli-http-smoke-'));
 await fs.mkdir(path.join(cliRoot, '.codex'), { recursive: true });
 const cliPort = await getFreePort();
 const cliChild = spawn(process.execPath, [

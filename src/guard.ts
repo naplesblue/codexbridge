@@ -4,7 +4,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { minimatch } from "minimatch";
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import { expandHome } from "./config.js";
 
 export interface Workspace {
@@ -13,10 +13,10 @@ export interface Workspace {
   openedAt: string;
 }
 
-export class CodexProError extends Error {
+export class CodexBridgeError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "CodexProError";
+    this.name = "CodexBridgeError";
   }
 }
 
@@ -61,7 +61,7 @@ function closestExistingParent(absPath: string): string {
 export class WorkspaceManager {
   private readonly workspaces = new Map<string, Workspace>();
 
-  constructor(private readonly config: CodexProConfig) {}
+  constructor(private readonly config: CodexBridgeConfig) {}
 
   defaultWorkspace(): Workspace {
     const existing = [...this.workspaces.values()].find((workspace) => workspace.root === this.config.defaultRoot);
@@ -72,16 +72,16 @@ export class WorkspaceManager {
     const requested = rootInput?.trim() ? expandHome(rootInput.trim()) : this.config.defaultRoot;
     const resolved = path.resolve(requested);
     if (!fs.existsSync(resolved)) {
-      throw new CodexProError(`Workspace root does not exist: ${resolved}`);
+      throw new CodexBridgeError(`Workspace root does not exist: ${resolved}`);
     }
     const stat = fs.statSync(resolved);
     if (!stat.isDirectory()) {
-      throw new CodexProError(`Workspace root is not a directory: ${resolved}`);
+      throw new CodexBridgeError(`Workspace root is not a directory: ${resolved}`);
     }
     const realRoot = fs.realpathSync(resolved);
     const allowed = this.config.allowedRoots.some((allowedRoot) => isSubpath(realRoot, allowedRoot));
     if (!allowed) {
-      throw new CodexProError(
+      throw new CodexBridgeError(
         `Workspace root is outside allowed roots: ${realRoot}\nAllowed roots:\n${this.config.allowedRoots.map((r) => `- ${r}`).join("\n")}`
       );
     }
@@ -99,7 +99,7 @@ export class WorkspaceManager {
     if (!id) return this.defaultWorkspace();
     const workspace = this.workspaces.get(id);
     if (!workspace) {
-      throw new CodexProError(`Unknown workspace_id: ${id}. Call open_workspace first.`);
+      throw new CodexBridgeError(`Unknown workspace_id: ${id}. Call open_workspace first.`);
     }
     return workspace;
   }
@@ -110,7 +110,7 @@ export class WorkspaceManager {
 }
 
 export class PathGuard {
-  constructor(private readonly config: CodexProConfig) {}
+  constructor(private readonly config: CodexBridgeConfig) {}
 
   isBlockedRelativePath(relPath: string): boolean {
     const rel = normalizeRelPath(relPath).replace(/^\.\//, "");
@@ -123,7 +123,7 @@ export class PathGuard {
 
   assertNotBlocked(relPath: string): void {
     if (this.isBlockedRelativePath(relPath)) {
-      throw new CodexProError(`Path is blocked by safety rules: ${relPath}`);
+      throw new CodexBridgeError(`Path is blocked by safety rules: ${relPath}`);
     }
   }
 
@@ -134,7 +134,7 @@ export class PathGuard {
     const relPath = displayPath(absPath, workspace.root);
 
     if (!isSubpath(absPath, workspace.root)) {
-      throw new CodexProError(`Path escapes workspace root: ${inputPath}`);
+      throw new CodexBridgeError(`Path escapes workspace root: ${inputPath}`);
     }
 
     this.assertNotBlocked(relPath);
@@ -142,7 +142,7 @@ export class PathGuard {
     const realTarget = maybeRealpath(absPath);
     if (realTarget) {
       if (!isSubpath(realTarget, workspace.root)) {
-        throw new CodexProError(`Path resolves outside workspace root through a symlink: ${inputPath}`);
+        throw new CodexBridgeError(`Path resolves outside workspace root through a symlink: ${inputPath}`);
       }
       const realRel = displayPath(realTarget, workspace.root);
       this.assertNotBlocked(realRel);
@@ -152,7 +152,7 @@ export class PathGuard {
       const parent = closestExistingParent(path.dirname(absPath));
       const realParent = maybeRealpath(parent);
       if (realParent && !isSubpath(realParent, workspace.root)) {
-        throw new CodexProError(`Write path resolves through a parent outside the workspace: ${inputPath}`);
+        throw new CodexBridgeError(`Write path resolves through a parent outside the workspace: ${inputPath}`);
       }
       if (realParent) {
         const realParentRel = displayPath(realParent, workspace.root);
@@ -166,17 +166,17 @@ export class PathGuard {
   async assertTextFile(absPath: string, maxBytes: number): Promise<void> {
     const stat = await fsp.stat(absPath);
     if (!stat.isFile()) {
-      throw new CodexProError(`Not a file: ${absPath}`);
+      throw new CodexBridgeError(`Not a file: ${absPath}`);
     }
     if (stat.size > maxBytes) {
-      throw new CodexProError(`File is too large (${stat.size} bytes). Limit: ${maxBytes} bytes.`);
+      throw new CodexBridgeError(`File is too large (${stat.size} bytes). Limit: ${maxBytes} bytes.`);
     }
     const handle = await fsp.open(absPath, "r");
     try {
       const sample = Buffer.alloc(Math.min(4096, stat.size));
       const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
       if (sample.subarray(0, bytesRead).includes(0)) {
-        throw new CodexProError("Refusing to read binary file.");
+        throw new CodexBridgeError("Refusing to read binary file.");
       }
     } finally {
       await handle.close();

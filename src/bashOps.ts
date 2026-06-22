@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
-import { CodexProError, PathGuard } from "./guard.js";
+import { CodexBridgeError, PathGuard } from "./guard.js";
 import { decideCommandPolicy } from "./policy.js";
 import { redactSensitiveText } from "./redact.js";
 
@@ -19,32 +19,32 @@ export interface BashResult {
   bashSessionId?: string;
 }
 
-function assertSafeCommand(config: CodexProConfig, command: string): void {
+function assertSafeCommand(config: CodexBridgeConfig, command: string): void {
   const decision = decideCommandPolicy(config, command);
-  if (decision.decision === "deny") throw new CodexProError(decision.reason);
+  if (decision.decision === "deny") throw new CodexBridgeError(decision.reason);
 }
 
-function assertBashSession(config: CodexProConfig, sessionId?: string): string | undefined {
+function assertBashSession(config: CodexBridgeConfig, sessionId?: string): string | undefined {
   const requested = sessionId?.trim();
   if (!config.bashSessionId) {
     if (config.requireBashSession) {
-      throw new CodexProError("bash session guard is enabled but no server bash session id is configured.");
+      throw new CodexBridgeError("bash session guard is enabled but no server bash session id is configured.");
     }
     return undefined;
   }
   if (!requested) {
     if (config.requireBashSession) {
-      throw new CodexProError(`bash session id is required. Retry with session_id="${config.bashSessionId}".`);
+      throw new CodexBridgeError(`bash session id is required. Retry with session_id="${config.bashSessionId}".`);
     }
     return config.bashSessionId;
   }
   if (requested !== config.bashSessionId) {
-    throw new CodexProError(`bash session id mismatch. This CodexPro server accepts session_id="${config.bashSessionId}".`);
+    throw new CodexBridgeError(`bash session id mismatch. This CodexBridge server accepts session_id="${config.bashSessionId}".`);
   }
   return config.bashSessionId;
 }
 
-function makeEnv(config: CodexProConfig): NodeJS.ProcessEnv {
+function makeEnv(config: CodexBridgeConfig): NodeJS.ProcessEnv {
   if (config.inheritEnv) {
     return { ...process.env, NO_COLOR: "1", CI: process.env.CI ?? "1" };
   }
@@ -72,13 +72,13 @@ function trimOutput(value: string, maxBytes: number): { value: string; truncated
 }
 
 export async function runBash(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   command: string,
   options: { cwd?: string; timeoutMs?: number; sessionId?: string } = {}
 ): Promise<BashResult> {
-  if (!command?.trim()) throw new CodexProError("command is required.");
+  if (!command?.trim()) throw new CodexBridgeError("command is required.");
   const bashSessionId = assertBashSession(config, options.sessionId);
   assertSafeCommand(config, command);
   const cwdResolved = guard.resolve(workspace, options.cwd ?? ".");
@@ -118,7 +118,7 @@ export async function runBash(
     child.on("close", (exitCode, signal) => {
       clearTimeout(timer);
       if (killedByTimeout) {
-        stderr += `\n[codexpro] Command timed out after ${timeoutMs} ms.`;
+        stderr += `\n[codexbridge] Command timed out after ${timeoutMs} ms.`;
       }
       const out = trimOutput(redactSensitiveText(stdout), config.maxOutputBytes);
       const err = trimOutput(redactSensitiveText(stderr), config.maxOutputBytes);

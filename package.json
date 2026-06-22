@@ -18,7 +18,6 @@
     "codex",
     "apps-sdk",
     "codexbridge",
-    "codexpro",
     "local-development",
     "cloudflare-tunnel",
     "ngrok"
@@ -51,10 +50,7 @@
   "bin": {
     "codexbridge": "scripts/codexbridge.mjs",
     "codexbridge-mcp": "dist/stdio.js",
-    "codexbridge-mcp-http": "dist/http.js",
-    "codexpro": "scripts/codexpro.mjs",
-    "codexpro-mcp": "dist/stdio.js",
-    "codexpro-mcp-http": "dist/http.js"
+    "codexbridge-mcp-http": "dist/http.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

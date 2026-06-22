@@ -2,7 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 
 export interface SkillInventoryItem {
@@ -297,8 +297,8 @@ export async function discoverMcpServers(workspace: Workspace): Promise<McpServe
   return unique(servers, (server) => `${server.source}:${server.name}`).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function codexproInventory(
-  config: CodexProConfig,
+export async function codexbridgeInventory(
+  config: CodexBridgeConfig,
   workspace: Workspace,
   options: { includeGlobalSkills?: boolean; includeMcpServers?: boolean; maxSkills?: number } = {}
 ): Promise<{
@@ -324,7 +324,7 @@ export async function codexproInventory(
     ? mcpServers.map((server) => `- ${server.name} (${server.source})`).join("\n")
     : "- none discovered";
 
-  const text = `# CodexPro Inventory
+  const text = `# CodexBridge Inventory
 
 Workspace: ${workspace.root}
 Bash mode: ${config.bashMode}

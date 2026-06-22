@@ -360,22 +360,13 @@ function commandAvailableFromRoot(command, root) {
   return executableFileExists(resolved);
 }
 
-function codexProHome() {
-  const customHome = process.env.CODEXBRIDGE_HOME ?? process.env.CODEXPRO_HOME;
+function codexBridgeHome() {
+  const customHome = process.env.CODEXBRIDGE_HOME;
   return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), '.codexbridge');
 }
 
-function legacyCodexBridgeHome() {
-  const customHome = process.env.CODEXPRO_HOME;
-  return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), '.codexpro');
-}
-
-function homeCandidates() {
-  return [...new Set([codexProHome(), legacyCodexBridgeHome()])];
-}
-
 function profileDir() {
-  return path.join(codexProHome(), 'profiles');
+  return path.join(codexBridgeHome(), 'profiles');
 }
 
 function profileIdForRoot(root) {
@@ -387,7 +378,7 @@ function profilePathForRoot(root) {
 }
 
 function runtimeDir() {
-  return path.join(codexProHome(), 'runtime');
+  return path.join(codexBridgeHome(), 'runtime');
 }
 
 function runtimeStatusPathForRoot(root) {
@@ -404,15 +395,9 @@ function readJsonFile(filePath) {
 }
 
 function loadWorkspaceProfile(root) {
-  let profilePath = '';
-  for (const home of homeCandidates()) {
-    const candidate = path.join(home, 'profiles', `${profileIdForRoot(root)}.json`);
-    if (fs.existsSync(candidate)) {
-      profilePath = candidate;
-      break;
-    }
-  }
+  const profilePath = profilePathForRoot(root);
   if (!profilePath) return {};
+  if (!fs.existsSync(profilePath)) return {};
   const profile = readJsonFile(profilePath);
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return {};
   if (profile.root && profile.root !== root) return {};
@@ -511,7 +496,7 @@ function reusableProfilePayload(profile, overrides = {}) {
 
 function optionValue(args, profile, field, envNames = [], fallback = undefined) {
   if (args[field] !== undefined) return args[field];
-  for (const envName of expandEnvNames(envNames)) {
+  for (const envName of envNames) {
     if (process.env[envName] !== undefined && process.env[envName] !== '') return process.env[envName];
   }
   if (profile?.[field] !== undefined && profile[field] !== '') return profile[field];
@@ -526,24 +511,15 @@ function boolFromValue(value, fallback = false) {
 
 function optionBool(args, profile, field, envNames = [], fallback = false) {
   if (args[field] !== undefined) return boolFromValue(args[field], fallback);
-  for (const envName of expandEnvNames(envNames)) {
+  for (const envName of envNames) {
     if (process.env[envName] !== undefined && process.env[envName] !== '') return boolFromValue(process.env[envName], fallback);
   }
   if (profile?.[field] !== undefined && profile[field] !== '') return boolFromValue(profile[field], fallback);
   return fallback;
 }
 
-function expandEnvNames(envNames) {
-  const out = [];
-  for (const name of envNames) {
-    out.push(name);
-    if (name.startsWith('CODEXBRIDGE_')) out.push(`CODEXPRO_${name.slice('CODEXBRIDGE_'.length)}`);
-  }
-  return [...new Set(out)];
-}
-
 function envValue(...names) {
-  for (const name of expandEnvNames(names)) {
+  for (const name of names) {
     const value = process.env[name];
     if (value !== undefined && value !== '') return value;
   }
@@ -589,7 +565,7 @@ function cloudflaredBinName() {
 }
 
 function localCloudflaredPath() {
-  return path.join(codexProHome(), 'bin', cloudflaredBinName());
+  return path.join(codexBridgeHome(), 'bin', cloudflaredBinName());
 }
 
 function cloudflaredReleaseAsset() {

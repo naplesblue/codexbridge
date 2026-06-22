@@ -3,9 +3,9 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { minimatch } from "minimatch";
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
-import { CodexProError, displayPath, normalizeRelPath, PathGuard } from "./guard.js";
+import { CodexBridgeError, displayPath, normalizeRelPath, PathGuard } from "./guard.js";
 import { decideWritePolicy } from "./policy.js";
 import { hasSecretValue, redactSensitiveText } from "./redact.js";
 
@@ -105,11 +105,11 @@ function isHiddenName(name: string): boolean {
   return name.startsWith(".") && name !== "." && name !== "..";
 }
 
-export async function repoTree(config: CodexProConfig, guard: PathGuard, workspace: Workspace, options: TreeOptions): Promise<TreeResult> {
+export async function repoTree(config: CodexBridgeConfig, guard: PathGuard, workspace: Workspace, options: TreeOptions): Promise<TreeResult> {
   const target = guard.resolve(workspace, options.path ?? ".");
   const stat = await fsp.stat(target.absPath);
   if (!stat.isDirectory()) {
-    throw new CodexProError(`Not a directory: ${target.relPath}`);
+    throw new CodexBridgeError(`Not a directory: ${target.relPath}`);
   }
 
   const lines: string[] = [target.relPath === "." ? "." : `${target.relPath}/`];
@@ -197,7 +197,7 @@ export async function listFiles(
 }
 
 export async function readTextFile(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   filePath: string,
@@ -213,7 +213,7 @@ export async function readTextFile(
   const startLine = Math.max(1, Math.floor(options.startLine ?? 1));
   const endLine = Math.min(totalLines, Math.floor(options.endLine ?? totalLines));
   if (endLine < startLine) {
-    throw new CodexProError(`end_line (${endLine}) must be >= start_line (${startLine}).`);
+    throw new CodexBridgeError(`end_line (${endLine}) must be >= start_line (${startLine}).`);
   }
   const selected = allLines.slice(startLine - 1, endLine);
   const numbered = withLineNumbers(selected, startLine);
@@ -231,7 +231,7 @@ export async function readTextFile(
 }
 
 export async function writeTextFile(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   filePath: string,
@@ -245,9 +245,9 @@ export async function writeTextFile(
     overwrite: options.overwrite,
     operation: "write"
   });
-  if (policy.decision === "deny") throw new CodexProError(policy.reason);
+  if (policy.decision === "deny") throw new CodexBridgeError(policy.reason);
   if (hasSecretValue(content)) {
-    throw new CodexProError("Secret-looking content is blocked from write. Use placeholders such as [REDACTED_SECRET] in handoff files.");
+    throw new CodexBridgeError("Secret-looking content is blocked from write. Use placeholders such as [REDACTED_SECRET] in handoff files.");
   }
 
   let oldText = "";
@@ -257,12 +257,12 @@ export async function writeTextFile(
     oldText = await fsp.readFile(resolved.absPath, "utf8");
     existed = true;
   } catch (error) {
-    if (error instanceof CodexProError && error.message.startsWith("Not a file")) throw error;
+    if (error instanceof CodexBridgeError && error.message.startsWith("Not a file")) throw error;
     if (fs.existsSync(resolved.absPath)) throw error;
   }
 
   if (existed && options.overwrite === false) {
-    throw new CodexProError(`File already exists and overwrite=false: ${resolved.relPath}`);
+    throw new CodexBridgeError(`File already exists and overwrite=false: ${resolved.relPath}`);
   }
   if (options.createDirs) {
     await fsp.mkdir(path.dirname(resolved.absPath), { recursive: true });
@@ -274,7 +274,7 @@ export async function writeTextFile(
 }
 
 export async function editTextFile(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   filePath: string,
@@ -282,13 +282,13 @@ export async function editTextFile(
   newText: string,
   options: { replaceAll?: boolean; expectedReplacements?: number } = {}
 ): Promise<{ path: string; replacements: number; bytes: number; sha256: string; diff: DiffResult }> {
-  if (!oldText) throw new CodexProError("old_text must not be empty.");
+  if (!oldText) throw new CodexBridgeError("old_text must not be empty.");
   const resolved = guard.resolve(workspace, filePath, { forWrite: true });
   await guard.assertTextFile(resolved.absPath, Math.max(config.maxWriteBytes, config.maxReadBytes));
   const before = await fsp.readFile(resolved.absPath, "utf8");
   const occurrences = before.split(oldText).length - 1;
   if (occurrences === 0) {
-    throw new CodexProError(`old_text was not found in ${resolved.relPath}. Read the file and retry with an exact snippet.`);
+    throw new CodexBridgeError(`old_text was not found in ${resolved.relPath}. Read the file and retry with an exact snippet.`);
   }
 
   let replacements: number;
@@ -298,21 +298,21 @@ export async function editTextFile(
     replacements = occurrences;
   } else {
     if (occurrences !== 1) {
-      throw new CodexProError(`old_text matched ${occurrences} times. Provide a more specific old_text or set replace_all=true.`);
+      throw new CodexBridgeError(`old_text matched ${occurrences} times. Provide a more specific old_text or set replace_all=true.`);
     }
     after = before.replace(oldText, newText);
     replacements = 1;
   }
 
   if (typeof options.expectedReplacements === "number" && replacements !== options.expectedReplacements) {
-    throw new CodexProError(`Expected ${options.expectedReplacements} replacements but would perform ${replacements}.`);
+    throw new CodexBridgeError(`Expected ${options.expectedReplacements} replacements but would perform ${replacements}.`);
   }
 
   const afterBytes = Buffer.byteLength(after, "utf8");
   const policy = decideWritePolicy(config, resolved.relPath, afterBytes, { operation: "edit" });
-  if (policy.decision === "deny") throw new CodexProError(policy.reason.replace("Write content", "Edited file would be"));
+  if (policy.decision === "deny") throw new CodexBridgeError(policy.reason.replace("Write content", "Edited file would be"));
   if (hasSecretValue(after)) {
-    throw new CodexProError("Secret-looking content is blocked from edit. Use placeholders such as [REDACTED_SECRET] in handoff files.");
+    throw new CodexBridgeError("Secret-looking content is blocked from edit. Use placeholders such as [REDACTED_SECRET] in handoff files.");
   }
 
   const diff = makeUnifiedDiff(before, after, resolved.relPath);
@@ -320,7 +320,7 @@ export async function editTextFile(
   return { path: resolved.relPath, replacements, bytes: afterBytes, sha256: sha256(after), diff };
 }
 
-export async function ensureAiBridge(config: CodexProConfig, guard: PathGuard, workspace: Workspace): Promise<string[]> {
+export async function ensureAiBridge(config: CodexBridgeConfig, guard: PathGuard, workspace: Workspace): Promise<string[]> {
   const files: Record<string, string> = {
     "README.md": `# AI Bridge\n\nShared planning context for ChatGPT, other planning models, Codex, OpenCode, Pi, or another local implementation agent.\n\n- current-plan.md: plan produced by ChatGPT or another planning model for the implementation agent.\n- agent-status.md: generic implementation notes, touched files, test results, blockers, and review notes.\n- implementation-diff.patch: final review diff from the implementation agent when practical.\n- codex-status.md: legacy Codex-specific status file, kept for existing workflows.\n- decisions.md: architectural decisions that should remain stable.\n- open-questions.md: unresolved questions.\n- execution-log.jsonl: append-only generic agent handoff and execution events.\n- session-log.jsonl: append-only legacy session events.\n`,
     "current-plan.md": "# Current Plan\n\nNo plan written yet.\n",

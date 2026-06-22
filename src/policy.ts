@@ -1,4 +1,4 @@
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 
 export type PolicyDecisionKind = "allow" | "ask" | "deny";
 export type PolicyRisk = "low" | "medium" | "high";
@@ -126,12 +126,12 @@ function startsWithAllowedPrefix(command: string): boolean {
   return isAllowedPackageScript(normalized) || SAFE_ALLOWED_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix} `));
 }
 
-export function decideCommandPolicy(config: CodexProConfig, command: string): PolicyDecision {
+export function decideCommandPolicy(config: CodexBridgeConfig, command: string): PolicyDecision {
   const normalized = compact(command);
   if (config.bashMode === "off") {
     return {
       decision: "deny",
-      reason: "bash tool is disabled. Start with CODEXPRO_BASH_MODE=safe or CODEXPRO_BASH_MODE=full to enable it.",
+      reason: "bash tool is disabled. Start with CODEXBRIDGE_BASH_MODE=safe or CODEXBRIDGE_BASH_MODE=full to enable it.",
       category: "bash-disabled",
       risk: "low"
     };
@@ -150,8 +150,8 @@ export function decideCommandPolicy(config: CodexProConfig, command: string): Po
       return {
         decision: "deny",
         reason:
-          `Command is blocked in CODEXPRO_BASH_MODE=safe: ${normalized}\n` +
-          "Use separate read/search/git tools, or restart with CODEXPRO_BASH_MODE=full only for trusted repos.",
+          `Command is blocked in CODEXBRIDGE_BASH_MODE=safe: ${normalized}\n` +
+          "Use separate read/search/git tools, or restart with CODEXBRIDGE_BASH_MODE=full only for trusted repos.",
         category: "blocked-command",
         risk: "high"
       };
@@ -164,7 +164,7 @@ export function decideCommandPolicy(config: CodexProConfig, command: string): Po
       reason:
         `Command is not in the safe bash allowlist: ${normalized}\n` +
         "Allowed examples: ls, find, git status, git diff, npm test, npm run typecheck, npm run build:clients, pytest, go test, cargo test. Use read/search tools for file contents. " +
-        "Use CODEXPRO_BASH_MODE=full for trusted local automation.",
+        "Use CODEXBRIDGE_BASH_MODE=full for trusted local automation.",
       category: "unlisted-command",
       risk: "medium"
     };
@@ -179,7 +179,7 @@ export function decideCommandPolicy(config: CodexProConfig, command: string): Po
 }
 
 export function decideWritePolicy(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   relPath: string,
   bytes: number,
   options: WritePolicyOptions = {}

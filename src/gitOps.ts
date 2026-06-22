@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
-import { CodexProError, PathGuard } from "./guard.js";
+import { CodexBridgeError, PathGuard } from "./guard.js";
 import { redactSensitiveText } from "./redact.js";
 
 function runGit(workspace: Workspace, args: string[], maxOutputBytes: number): string {
@@ -22,7 +22,7 @@ function runGit(workspace: Workspace, args: string[], maxOutputBytes: number): s
   return redactSensitiveText(result.stdout.trim() || "(no output)");
 }
 
-export function gitStatus(config: CodexProConfig, workspace: Workspace, guard?: PathGuard, filePath?: string): string {
+export function gitStatus(config: CodexBridgeConfig, workspace: Workspace, guard?: PathGuard, filePath?: string): string {
   const args = ["status", "--short", "--branch"];
   if (filePath?.trim()) {
     if (!guard) return "path-scoped git status requires a path guard";
@@ -32,7 +32,7 @@ export function gitStatus(config: CodexProConfig, workspace: Workspace, guard?: 
   return runGit(workspace, args, config.maxOutputBytes);
 }
 
-export function gitDiff(config: CodexProConfig, guard: PathGuard, workspace: Workspace, filePath?: string, staged = false): string {
+export function gitDiff(config: CodexBridgeConfig, guard: PathGuard, workspace: Workspace, filePath?: string, staged = false): string {
   const args = ["diff", "--no-color", "--no-ext-diff", "--no-textconv"];
   if (staged) args.push("--staged");
   if (filePath?.trim()) {
@@ -42,7 +42,7 @@ export function gitDiff(config: CodexProConfig, guard: PathGuard, workspace: Wor
   return runGit(workspace, args, config.maxOutputBytes);
 }
 
-export function gitLog(config: CodexProConfig, workspace: Workspace, maxCount = 8): string {
+export function gitLog(config: CodexBridgeConfig, workspace: Workspace, maxCount = 8): string {
   const count = Math.max(1, Math.min(Math.floor(maxCount), 30));
   return runGit(workspace, ["log", `--max-count=${count}`, "--oneline", "--decorate"], config.maxOutputBytes);
 }

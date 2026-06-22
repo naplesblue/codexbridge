@@ -2,9 +2,9 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { minimatch } from "minimatch";
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
-import { CodexProError, PathGuard, normalizeRelPath } from "./guard.js";
+import { CodexBridgeError, PathGuard, normalizeRelPath } from "./guard.js";
 import { listFiles, readTextFile, repoTree, writeTextFile, ensureAiBridge } from "./fsOps.js";
 import { gitDiff, gitLog, gitStatus } from "./gitOps.js";
 import { readAiBridgeContext } from "./workspaceOps.js";
@@ -156,7 +156,7 @@ function appendSection(parts: string[], heading: string, body: string): void {
 }
 
 export async function buildProContext(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   options: ProContextOptions = {}
@@ -299,7 +299,7 @@ export async function buildProContext(
 }
 
 export async function exportProContext(
-  config: CodexProConfig,
+  config: CodexBridgeConfig,
   guard: PathGuard,
   workspace: Workspace,
   options: ProContextOptions = {}

@@ -36,8 +36,6 @@ export interface CodexBridgeConfig {
   contextDir: string;
 }
 
-export type CodexProConfig = CodexBridgeConfig;
-
 const DEFAULT_BLOCKED_GLOBS = [
   ".git",
   ".git/**",
@@ -202,14 +200,6 @@ function boolFrom(value: string | undefined, fallback = false): boolean {
   return ["1", "true", "yes", "y", "on"].includes(value.toLowerCase());
 }
 
-function envValue(...names: string[]): string | undefined {
-  for (const name of names) {
-    const value = process.env[name];
-    if (value !== undefined) return value;
-  }
-  return undefined;
-}
-
 function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
@@ -218,7 +208,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexBridgeConfig {
   const args = parseArgs(argv);
 
   const rootFromArgs = typeof args.root === "string" ? args.root : undefined;
-  const root = rootFromArgs ?? envValue("CODEXBRIDGE_ROOT", "CODEXPRO_ROOT", "CODEBASE_BRIDGE_REPO_ROOT") ?? process.cwd();
+  const root = rootFromArgs ?? process.env.CODEXBRIDGE_ROOT ?? process.env.CODEBASE_BRIDGE_REPO_ROOT ?? process.cwd();
   const defaultRoot = toRealDir(root);
 
   const allowRootArgs = Array.isArray(args["allow-root"])
@@ -228,11 +218,10 @@ export function loadConfig(argv = process.argv.slice(2)): CodexBridgeConfig {
       : [];
   const envAllowedRoots = [
     ...splitRoots(process.env.CODEXBRIDGE_ALLOWED_ROOTS),
-    ...splitRoots(process.env.CODEXPRO_ALLOWED_ROOTS),
     ...splitRoots(process.env.CODEBASE_BRIDGE_ALLOWED_ROOTS)
   ];
 
-  const allowHome = envValue("CODEXBRIDGE_ALLOW_HOME", "CODEXPRO_ALLOW_HOME") === "1" || args["allow-home"] === true;
+  const allowHome = process.env.CODEXBRIDGE_ALLOW_HOME === "1" || args["allow-home"] === true;
   const requestedAllowed = [defaultRoot, ...allowRootArgs, ...envAllowedRoots, ...(allowHome ? [os.homedir()] : [])];
   const allowedRoots = [...new Set(requestedAllowed.map(toRealDir))];
 
@@ -252,16 +241,16 @@ export function loadConfig(argv = process.argv.slice(2)): CodexBridgeConfig {
   const writeArg = typeof args.write === "string" ? args.write : undefined;
   const toolModeArg = typeof args["tool-mode"] === "string" ? args["tool-mode"] : undefined;
   const widgetDomainArg = typeof args["widget-domain"] === "string" ? args["widget-domain"] : undefined;
-  const extraBlockedGlobs = splitList(envValue("CODEXBRIDGE_BLOCKED_GLOBS", "CODEXPRO_BLOCKED_GLOBS"), ",");
-  const host = hostArg ?? process.env.HOST ?? envValue("CODEXBRIDGE_HOST", "CODEXPRO_HOST") ?? "127.0.0.1";
-  const authToken = envValue("CODEXBRIDGE_HTTP_TOKEN", "CODEXPRO_HTTP_TOKEN", "CODEBASE_BRIDGE_HTTP_TOKEN");
-  const allowNoToken = boolFrom(envValue("CODEXBRIDGE_ALLOW_NO_HTTP_TOKEN", "CODEXPRO_ALLOW_NO_HTTP_TOKEN"), false);
+  const extraBlockedGlobs = splitList(process.env.CODEXBRIDGE_BLOCKED_GLOBS, ",");
+  const host = hostArg ?? process.env.HOST ?? process.env.CODEXBRIDGE_HOST ?? "127.0.0.1";
+  const authToken = process.env.CODEXBRIDGE_HTTP_TOKEN ?? process.env.CODEBASE_BRIDGE_HTTP_TOKEN;
+  const allowNoToken = boolFrom(process.env.CODEXBRIDGE_ALLOW_NO_HTTP_TOKEN, false);
   const requireHttpToken =
-    boolFrom(envValue("CODEXBRIDGE_REQUIRE_HTTP_TOKEN", "CODEXPRO_REQUIRE_HTTP_TOKEN"), false) ||
-    boolFrom(envValue("CODEXBRIDGE_TUNNEL_MODE", "CODEXPRO_TUNNEL_MODE"), false) ||
+    boolFrom(process.env.CODEXBRIDGE_REQUIRE_HTTP_TOKEN, false) ||
+    boolFrom(process.env.CODEXBRIDGE_TUNNEL_MODE, false) ||
     (!isLoopbackHost(host) && !allowNoToken);
-  const bashSessionId = bashSessionIdFrom(bashSessionArg ?? envValue("CODEXBRIDGE_BASH_SESSION_ID", "CODEXPRO_BASH_SESSION_ID"));
-  const requireBashSession = boolFrom(requireBashSessionArg ?? envValue("CODEXBRIDGE_REQUIRE_BASH_SESSION", "CODEXPRO_REQUIRE_BASH_SESSION"), false);
+  const bashSessionId = bashSessionIdFrom(bashSessionArg ?? process.env.CODEXBRIDGE_BASH_SESSION_ID);
+  const requireBashSession = boolFrom(requireBashSessionArg ?? process.env.CODEXBRIDGE_REQUIRE_BASH_SESSION, false);
   if (requireBashSession && !bashSessionId) {
     throw new Error("CODEXBRIDGE_REQUIRE_BASH_SESSION requires CODEXBRIDGE_BASH_SESSION_ID or --bash-session.");
   }
@@ -270,27 +259,27 @@ export function loadConfig(argv = process.argv.slice(2)): CodexBridgeConfig {
     defaultRoot,
     allowedRoots,
     host,
-    port: numberFrom(portArg ?? process.env.PORT ?? envValue("CODEXBRIDGE_PORT", "CODEXPRO_PORT"), 8787, 1, 65535),
-    widgetDomain: widgetDomainFrom(widgetDomainArg ?? envValue("CODEXBRIDGE_WIDGET_DOMAIN", "CODEXPRO_WIDGET_DOMAIN")),
+    port: numberFrom(portArg ?? process.env.PORT ?? process.env.CODEXBRIDGE_PORT, 8787, 1, 65535),
+    widgetDomain: widgetDomainFrom(widgetDomainArg ?? process.env.CODEXBRIDGE_WIDGET_DOMAIN),
     authToken,
     requireHttpToken,
-    bashMode: bashModeFrom(bashArg ?? envValue("CODEXBRIDGE_BASH_MODE", "CODEXPRO_BASH_MODE")),
-    bashTranscript: bashTranscriptFrom(bashTranscriptArg ?? envValue("CODEXBRIDGE_BASH_TRANSCRIPT", "CODEXPRO_BASH_TRANSCRIPT")),
+    bashMode: bashModeFrom(bashArg ?? process.env.CODEXBRIDGE_BASH_MODE),
+    bashTranscript: bashTranscriptFrom(bashTranscriptArg ?? process.env.CODEXBRIDGE_BASH_TRANSCRIPT),
     bashSessionId,
     requireBashSession,
-    codexSessions: codexSessionsFrom(codexSessionsArg ?? envValue("CODEXBRIDGE_CODEX_SESSIONS", "CODEXPRO_CODEX_SESSIONS")),
-    codexDir: expandHome(codexDirArg || envValue("CODEXBRIDGE_CODEX_DIR", "CODEXPRO_CODEX_DIR") || path.join(os.homedir(), ".codex")),
-    writeMode: writeModeFrom(writeArg ?? envValue("CODEXBRIDGE_WRITE_MODE", "CODEXPRO_WRITE_MODE")),
-    toolMode: toolModeFrom(toolModeArg ?? envValue("CODEXBRIDGE_TOOL_MODE", "CODEXPRO_TOOL_MODE")),
-    inheritEnv: envValue("CODEXBRIDGE_INHERIT_ENV", "CODEXPRO_INHERIT_ENV") === "1",
-    maxReadBytes: numberFrom(envValue("CODEXBRIDGE_MAX_READ_BYTES", "CODEXPRO_MAX_READ_BYTES"), 180_000, 4_000, 2_000_000),
-    maxWriteBytes: numberFrom(envValue("CODEXBRIDGE_MAX_WRITE_BYTES", "CODEXPRO_MAX_WRITE_BYTES"), 1_000_000, 1_000, 10_000_000),
-    maxOutputBytes: numberFrom(envValue("CODEXBRIDGE_MAX_OUTPUT_BYTES", "CODEXPRO_MAX_OUTPUT_BYTES"), 120_000, 4_000, 2_000_000),
-    maxSearchResults: numberFrom(envValue("CODEXBRIDGE_MAX_SEARCH_RESULTS", "CODEXPRO_MAX_SEARCH_RESULTS"), 200, 5, 2_000),
-    maxJournalEvents: numberFrom(envValue("CODEXBRIDGE_MAX_JOURNAL_EVENTS", "CODEXPRO_MAX_JOURNAL_EVENTS"), 200, 10, 5_000),
-    maxHttpSessions: numberFrom(envValue("CODEXBRIDGE_MAX_HTTP_SESSIONS", "CODEXPRO_MAX_HTTP_SESSIONS"), 64, 1, 512),
-    httpSessionTtlMs: numberFrom(envValue("CODEXBRIDGE_HTTP_SESSION_TTL_MS", "CODEXPRO_HTTP_SESSION_TTL_MS"), 30 * 60_000, 60_000, 24 * 60 * 60_000),
+    codexSessions: codexSessionsFrom(codexSessionsArg ?? process.env.CODEXBRIDGE_CODEX_SESSIONS),
+    codexDir: expandHome(codexDirArg || process.env.CODEXBRIDGE_CODEX_DIR || path.join(os.homedir(), ".codex")),
+    writeMode: writeModeFrom(writeArg ?? process.env.CODEXBRIDGE_WRITE_MODE),
+    toolMode: toolModeFrom(toolModeArg ?? process.env.CODEXBRIDGE_TOOL_MODE),
+    inheritEnv: process.env.CODEXBRIDGE_INHERIT_ENV === "1",
+    maxReadBytes: numberFrom(process.env.CODEXBRIDGE_MAX_READ_BYTES, 180_000, 4_000, 2_000_000),
+    maxWriteBytes: numberFrom(process.env.CODEXBRIDGE_MAX_WRITE_BYTES, 1_000_000, 1_000, 10_000_000),
+    maxOutputBytes: numberFrom(process.env.CODEXBRIDGE_MAX_OUTPUT_BYTES, 120_000, 4_000, 2_000_000),
+    maxSearchResults: numberFrom(process.env.CODEXBRIDGE_MAX_SEARCH_RESULTS, 200, 5, 2_000),
+    maxJournalEvents: numberFrom(process.env.CODEXBRIDGE_MAX_JOURNAL_EVENTS, 200, 10, 5_000),
+    maxHttpSessions: numberFrom(process.env.CODEXBRIDGE_MAX_HTTP_SESSIONS, 64, 1, 512),
+    httpSessionTtlMs: numberFrom(process.env.CODEXBRIDGE_HTTP_SESSION_TTL_MS, 30 * 60_000, 60_000, 24 * 60 * 60_000),
     blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs],
-    contextDir: envValue("CODEXBRIDGE_CONTEXT_DIR", "CODEXPRO_CONTEXT_DIR") ?? ".ai-bridge"
+    contextDir: process.env.CODEXBRIDGE_CONTEXT_DIR ?? ".ai-bridge"
   };
 }

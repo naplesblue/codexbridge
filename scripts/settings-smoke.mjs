@@ -16,18 +16,6 @@ function run(args, env) {
   return `${result.stdout}\n${result.stderr}`;
 }
 
-function runCompat(args, env) {
-  const result = spawnSync(process.execPath, ['scripts/codexpro.mjs', ...args], {
-    cwd: path.resolve('.'),
-    env,
-    encoding: 'utf8'
-  });
-  if (result.status !== 0) {
-    throw new Error(`codexpro compat ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-  }
-  return `${result.stdout}\n${result.stderr}`;
-}
-
 function runFail(args, env, pattern) {
   const result = spawnSync(process.execPath, ['scripts/codexbridge.mjs', ...args], {
     cwd: path.resolve('.'),
@@ -35,11 +23,11 @@ function runFail(args, env, pattern) {
     encoding: 'utf8'
   });
   if (result.status === 0) {
-    throw new Error(`codexpro ${args.join(' ')} unexpectedly succeeded\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    throw new Error(`codexbridge ${args.join(' ')} unexpectedly succeeded\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   }
   const output = `${result.stdout}\n${result.stderr}`;
   if (pattern && !pattern.test(output)) {
-    throw new Error(`codexpro ${args.join(' ')} failed for the wrong reason\n${output}`);
+    throw new Error(`codexbridge ${args.join(' ')} failed for the wrong reason\n${output}`);
   }
   return output;
 }
@@ -50,20 +38,15 @@ async function readProfile(root, home) {
   return JSON.parse(await fs.readFile(path.join(home, 'profiles', `${id}.json`), 'utf8'));
 }
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-root-'));
-const reuseRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-reuse-'));
-const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-home-'));
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-settings-root-'));
+const reuseRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-settings-reuse-'));
+const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-settings-home-'));
 const env = { ...process.env, CODEXBRIDGE_HOME: home };
 
 const help = run(['--help'], env);
 if (!help.includes('CodexBridge easy launcher') || !help.includes('codexbridge start')) {
   throw new Error(`help did not prefer CodexBridge naming:\n${help}`);
 }
-const compatHelp = runCompat(['--help'], env);
-if (!compatHelp.includes('CodexBridge easy launcher')) {
-  throw new Error(`codexpro compatibility wrapper did not invoke CodexBridge CLI:\n${compatHelp}`);
-}
-
 const empty = run(['settings', 'show', '--root', root], env);
 if (!empty.includes('No saved settings')) {
   throw new Error(`expected empty settings output, got:\n${empty}`);

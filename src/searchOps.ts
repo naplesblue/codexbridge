@@ -1,9 +1,9 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import type { CodexProConfig } from "./config.js";
+import type { CodexBridgeConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
-import { CodexProError, PathGuard } from "./guard.js";
+import { CodexBridgeError, PathGuard } from "./guard.js";
 import { listFiles } from "./fsOps.js";
 import { redactSensitiveText } from "./redact.js";
 
@@ -36,7 +36,7 @@ function truncateLine(line: string, max = 400): string {
   return `${line.slice(0, max)}…`;
 }
 
-async function runRipgrep(config: CodexProConfig, guard: PathGuard, workspace: Workspace, options: SearchOptions): Promise<SearchResult> {
+async function runRipgrep(config: CodexBridgeConfig, guard: PathGuard, workspace: Workspace, options: SearchOptions): Promise<SearchResult> {
   const target = guard.resolve(workspace, options.root ?? ".");
   const args = ["--line-number", "--no-heading", "--color=never", "--max-columns", "500", "--max-count", "50"];
   if (!options.regex) args.push("--fixed-strings");
@@ -59,7 +59,7 @@ async function runRipgrep(config: CodexProConfig, guard: PathGuard, workspace: W
     child.on("error", reject);
     child.on("close", (code) => {
       if (code && code > 1) {
-        reject(new CodexProError(stderr.trim() || `ripgrep failed with exit code ${code}`));
+        reject(new CodexBridgeError(stderr.trim() || `ripgrep failed with exit code ${code}`));
         return;
       }
       const matches: Array<{ path: string; line: number; text: string }> = [];
@@ -80,7 +80,7 @@ async function runRipgrep(config: CodexProConfig, guard: PathGuard, workspace: W
   });
 }
 
-async function runNodeSearch(config: CodexProConfig, guard: PathGuard, workspace: Workspace, options: SearchOptions): Promise<SearchResult> {
+async function runNodeSearch(config: CodexBridgeConfig, guard: PathGuard, workspace: Workspace, options: SearchOptions): Promise<SearchResult> {
   const files = await listFiles(guard, workspace, {
     root: options.root,
     glob: options.glob,
@@ -114,9 +114,9 @@ async function runNodeSearch(config: CodexProConfig, guard: PathGuard, workspace
   return { text, matches, truncated: matches.length >= options.maxResults, used: "node" };
 }
 
-export async function searchWorkspace(config: CodexProConfig, guard: PathGuard, workspace: Workspace, rawOptions: Partial<SearchOptions>): Promise<SearchResult> {
+export async function searchWorkspace(config: CodexBridgeConfig, guard: PathGuard, workspace: Workspace, rawOptions: Partial<SearchOptions>): Promise<SearchResult> {
   const query = rawOptions.query?.toString() ?? "";
-  if (!query) throw new CodexProError("query is required.");
+  if (!query) throw new CodexBridgeError("query is required.");
   const options: SearchOptions = {
     query,
     regex: Boolean(rawOptions.regex),
@@ -130,7 +130,7 @@ export async function searchWorkspace(config: CodexProConfig, guard: PathGuard, 
       // Validate early for fallback and clearer errors.
       new RegExp(options.query);
     } catch (error) {
-      throw new CodexProError(`Invalid regex: ${error instanceof Error ? error.message : String(error)}`);
+      throw new CodexBridgeError(`Invalid regex: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
