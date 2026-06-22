@@ -1185,6 +1185,7 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         includeGlobalSkills: parseBool(args.include_global_skills, true),
         bootstrapContext: false
       });
+      const activeTask = activeTaskSummary(config, guard, workspace);
       return textResult(summary.text, {
         workspace_id: summary.workspaceId,
         root: summary.root,
@@ -1197,7 +1198,8 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         git_status: summary.gitStatus,
         bash_mode: config.bashMode,
         write_mode: config.writeMode,
-        tool_mode: config.toolMode
+        tool_mode: config.toolMode,
+        active_task: activeTask
       });
     }
   );
