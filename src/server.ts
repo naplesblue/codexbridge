@@ -15,7 +15,8 @@ import { codexbridgeInventory, loadSkill } from "./capabilitiesOps.js";
 import { listCodexSessions, readCodexSession } from "./codexSessions.js";
 import { applyChangeSet, changesFromUnifiedDiff, previewChangeSet, type ChangeSetInput } from "./changeSet.js";
 import { appendJournalEvent, readJournalEvents } from "./journal.js";
-import { buildTaskBrief, buildTaskPlan, buildTaskReport, reviewApprovalActions } from "./taskOps.js";
+import { buildTaskBrief, buildTaskPlan, buildTaskReport, buildTaskResume, reviewApprovalActions } from "./taskOps.js";
+import { activeTaskSummary, archiveActiveTask } from "./taskStore.js";
 import { decideCommandPolicy } from "./policy.js";
 import { TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { redactSensitiveText, redactStructured } from "./redact.js";
@@ -264,6 +265,7 @@ const STANDARD_TOOL_NAMES = [
   "task_plan",
   "task_verify",
   "task_report",
+  "task_resume",
   "ssh_profiles",
   "ssh_exec",
   "operation_journal",
@@ -294,6 +296,7 @@ const FULL_TOOL_NAMES = [
   "task_plan",
   "task_verify",
   "task_report",
+  "task_resume",
   "bash",
   "ssh_profiles",
   "ssh_exec",
@@ -1125,6 +1128,7 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         includeGlobalSkills: parseBool(args.include_global_skills, true),
         bootstrapContext: false
       });
+      const activeTask = activeTaskSummary(config, guard, workspace);
       return textResult(summary.text, {
         workspace_id: summary.workspaceId,
         root: summary.root,
@@ -1137,7 +1141,8 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         git_status: summary.gitStatus,
         bash_mode: config.bashMode,
         write_mode: config.writeMode,
-        tool_mode: config.toolMode
+        tool_mode: config.toolMode,
+        active_task: activeTask
       });
     }
   );
@@ -1610,8 +1615,9 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         includeDiff: parseBool(args.include_diff, false),
         includeTree: parseBool(args.include_tree, true)
       });
-      const text = `# Task Brief\n\nGoal: ${result.goal}\nTarget: ${result.target_path}\nAGENTS files: ${result.agents_files.join(", ") || "none"}\nRecommended workflow: ${result.recommended_workflow.join(" -> ")}\n\n${result.context_text}${result.tree ? `\n\n## Tree\n\n\`\`\`text\n${result.tree}\n\`\`\`` : ""}`;
-      return textResult(text, { ...result });
+      const activeTask = activeTaskSummary(config, guard, workspace);
+      const text = `# Task Brief\n\nGoal: ${result.goal}\nTarget: ${result.target_path}\nAGENTS files: ${result.agents_files.join(", ") || "none"}\nRecommended workflow: ${result.recommended_workflow.join(" -> ")}${activeTask ? `\n\n> There is an in-progress task: ${activeTask.goal}. Call task_resume to continue.` : ""}\n\n${result.context_text}${result.tree ? `\n\n## Tree\n\n\`\`\`text\n${result.tree}\n\`\`\`` : ""}`;
+      return textResult(text, { ...result, active_task: activeTask });
     }
   );
 
@@ -1627,7 +1633,8 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         goal: z.string().describe("User-facing coding task goal."),
         target_paths: z.array(z.string()).optional().describe("Likely files or directories involved."),
         proposed_commands: z.array(z.string()).optional().describe("Verification commands the model expects to run."),
-        proposed_changes: z.array(z.record(z.unknown())).optional().describe("Optional proposed change set to preview and include in approval requirements.")
+        proposed_changes: z.array(z.record(z.unknown())).optional().describe("Optional proposed change set to preview and include in approval requirements."),
+        plan_steps: z.array(z.string()).optional().describe("The agent's actual implementation steps. When provided, the goal and plan are persisted as the workspace's active task and a task_id is returned for later task_resume.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
@@ -1642,7 +1649,8 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         goal: String(args.goal ?? ""),
         targetPaths: Array.isArray(args.target_paths) ? args.target_paths.map(String) : [],
         proposedCommands: Array.isArray(args.proposed_commands) ? args.proposed_commands.map(String) : [],
-        proposedChanges: Array.isArray(args.proposed_changes) ? normalizeChangeSetInput(args.proposed_changes) : undefined
+        proposedChanges: Array.isArray(args.proposed_changes) ? normalizeChangeSetInput(args.proposed_changes) : undefined,
+        planSteps: Array.isArray(args.plan_steps) ? args.plan_steps.map(String) : undefined
       });
       const steps = result.steps.map((step) => `${step.order}. ${step.tool}: ${step.purpose}`).join("\n");
       const approvals = result.approval_requirements.length
@@ -1703,7 +1711,8 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
         include_diff: z.boolean().optional().describe("Include raw git diff. Default: true."),
-        max_events: z.number().int().min(1).max(500).optional().describe("Recent journal events to include. Default: 50.")
+        max_events: z.number().int().min(1).max(500).optional().describe("Recent journal events to include. Default: 50."),
+        complete: z.boolean().optional().describe("Mark the active task complete and archive it to .ai-bridge/tasks/<id>.json. Default: false.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
@@ -1724,10 +1733,50 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         },
         { normalizeGitOutput, looksLikeGitError, changedStatusLines, diffStats }
       );
+      const archivedTask = parseBool(args.complete, false)
+        ? await archiveActiveTask(config, guard, workspace, "complete")
+        : null;
       const eventRows = result.events.length
         ? result.events.map((event) => `- ${event.ts} ${event.status.toUpperCase()} ${event.event} ${event.paths?.join(", ") ?? event.command ?? ""}`.trim()).join("\n")
         : "- No journal events.";
       const text = `# Task Report\n\nChanged: ${result.changed}\nDiff stats: +${result.additions} -${result.deletions}\n\n## Changed Files\n\n${result.changed_files.length ? result.changed_files.map((line) => `- ${line}`).join("\n") : "- No changed files."}\n\n## Recent Events\n\n${eventRows}${result.diff ? diffBlock(result.diff) : ""}`;
+      return textResult(text, { ...result, ...(archivedTask ? { archived_task: archivedTask } : {}) });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "task_resume",
+    {
+      title: "Task Resume",
+      description: "Resume the workspace's in-progress task after a new session: returns the saved goal and plan plus derived progress (git status/diff and journal events since the task started). Returns active=false when no task is in progress.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
+        max_events: z.number().int().min(1).max(500).optional().describe("Recent journal events to include. Default: 50.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Resuming task...",
+        "openai/toolInvocation/invoked": "Task resume ready"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await buildTaskResume(config, guard, workspace, {
+        maxEvents: limitInt(args.max_events, 50, 1, 500)
+      });
+      if (!result.active) {
+        return textResult("# Task Resume\n\nNo in-progress task for this workspace. Start one with task_plan (provide plan_steps).", { ...result });
+      }
+      const stepRows = result.plan_steps?.length
+        ? result.plan_steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
+        : "- No plan steps recorded.";
+      const eventRows = result.events?.length
+        ? result.events.map((event) => `- ${event.ts} ${event.status.toUpperCase()} ${event.event} ${event.paths?.join(", ") ?? event.command ?? ""}`.trim()).join("\n")
+        : "- No journal events since the task started.";
+      const text = `# Task Resume\n\nTask: ${result.task_id}\nGoal: ${result.goal}\nStarted: ${result.created_at}\n\n## Plan\n\n${stepRows}\n\n## Events Since Start\n\n${eventRows}${result.git_diff ? diffBlock(result.git_diff) : ""}`;
       return textResult(text, { ...result });
     }
   );
