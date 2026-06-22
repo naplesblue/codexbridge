@@ -122,9 +122,9 @@ unchanged.
 - Missing `current-task.json` → `task_resume` returns `{ active: false }`; corrupt file →
   surface a parse-error (mirror `readJournalEvents`), do not crash.
 - Task files live under `.ai-bridge` and are written through the same
-  `guard.resolve(..., { forWrite: true })` path as the journal, so they work under
-  `writeMode=handoff` and `writeMode=workspace` (and are not writable under `writeMode=off`,
-  consistent with the journal).
+  `guard.resolve(..., { forWrite: true })` path as the journal. Like the journal, the task
+  store is task infrastructure and writes independent of `writeMode` (so resume works even when
+  source writes are restricted to handoff or disabled).
 - Starting a new task while one is `in_progress` archives the old one as `abandoned` (no
   history loss).
 - v1 does not prune archived tasks (records are tiny); a cap can be added later.
