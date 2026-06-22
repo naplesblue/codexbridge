@@ -150,7 +150,9 @@ const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--al
         workdir: '/srv/app',
         mode: 'safe'
       }
-    })
+    }),
+    CODEXBRIDGE_DESKTOP_MODE: 'safe',
+    CODEXBRIDGE_DESKTOP_APPS: 'TextEdit'
   }
 });
 
@@ -173,7 +175,7 @@ await client.request('initialize', {
 client.notify('notifications/initialized');
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
-for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'desktop_status', 'desktop_open', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
   if (!toolNames.includes(expected)) throw new Error(`missing tool: ${expected}`);
 }
 const toolCardUri = 'ui://widget/codexbridge-tool-card-v1.html';
@@ -244,6 +246,35 @@ if (JSON.stringify(sshDryRun.structuredContent).includes('codexbridge_test_key')
 }
 await expectToolError('ssh_exec', { profile: 'staging', command: 'sudo reboot', dry_run: true }, /blocked|safe|policy/i);
 await expectToolError('approval_review', { workspace_id: current.structuredContent.workspace_id, actions: [{ type: 'ssh_command', profile: 'missing', command: 'hostname' }] }, /Unknown SSH profile/i);
+if (serverConfig.structuredContent.desktopMode !== 'safe' || !serverConfig.structuredContent.desktopApps?.includes?.('TextEdit')) {
+  throw new Error(`server_config did not expose desktop config: ${JSON.stringify(serverConfig.structuredContent)}`);
+}
+const desktopStatus = await client.request('tools/call', { name: 'desktop_status', arguments: {} });
+if (desktopStatus.structuredContent.mode !== 'safe' || !desktopStatus.structuredContent.capabilities?.includes?.('open_url')) {
+  throw new Error(`desktop_status did not expose safe desktop capabilities: ${JSON.stringify(desktopStatus.structuredContent)}`);
+}
+const desktopUrlDryRun = await client.request('tools/call', {
+  name: 'desktop_open',
+  arguments: { target_type: 'url', target: 'https://example.com/docs', dry_run: true }
+});
+if (!desktopUrlDryRun.structuredContent.dry_run || desktopUrlDryRun.structuredContent.argv?.at?.(-1) !== 'https://example.com/docs') {
+  throw new Error(`desktop_open did not dry-run URL open: ${JSON.stringify(desktopUrlDryRun.structuredContent)}`);
+}
+const desktopFileDryRun = await client.request('tools/call', {
+  name: 'desktop_open',
+  arguments: { workspace_id: current.structuredContent.workspace_id, target_type: 'workspace_path', target: 'demo.txt', dry_run: true }
+});
+if (!desktopFileDryRun.structuredContent.dry_run || desktopFileDryRun.structuredContent.resolved_target !== path.join(realTmp, 'demo.txt')) {
+  throw new Error(`desktop_open did not dry-run workspace file open: ${JSON.stringify(desktopFileDryRun.structuredContent)}`);
+}
+const desktopAppDryRun = await client.request('tools/call', {
+  name: 'desktop_open',
+  arguments: { target_type: 'app', target: 'TextEdit', dry_run: true }
+});
+if (!desktopAppDryRun.structuredContent.argv?.includes?.('-a') || !desktopAppDryRun.structuredContent.argv?.includes?.('TextEdit')) {
+  throw new Error(`desktop_open did not dry-run app activation: ${JSON.stringify(desktopAppDryRun.structuredContent)}`);
+}
+await expectToolError('desktop_open', { target_type: 'url', target: 'javascript:alert(1)', dry_run: true }, /desktop|URL|scheme|policy/i);
 const selfTest = await client.request('tools/call', {
   name: 'codexbridge_self_test',
   arguments: {
@@ -579,8 +610,8 @@ const modeClient = new McpStdioClient('node', args, {
   modeClient.close();
 }
 
-await assertToolMode('', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexbridge_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
-await assertToolMode('minimal', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'ssh_profiles', 'ssh_exec', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
+await assertToolMode('', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'desktop_status', 'desktop_open', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexbridge_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
+await assertToolMode('minimal', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'ssh_profiles', 'ssh_exec', 'desktop_status', 'desktop_open', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
 
 const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp], {
   cwd: path.resolve('.'),

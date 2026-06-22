@@ -173,6 +173,8 @@ Standard mode exposes:
 - `bash` — run allowlisted shell commands in the workspace. Controlled by `CODEXBRIDGE_BASH_MODE`.
 - `ssh_profiles` — list configured remote SSH profiles with identity paths redacted.
 - `ssh_exec` — run or dry-run one non-interactive command on a configured SSH profile. Controlled by `CODEXBRIDGE_SSH_MODE`.
+- `desktop_status` — report desktop-open mode and capabilities (macOS-only). Controlled by `CODEXBRIDGE_DESKTOP_MODE`.
+- `desktop_open` — open or dry-run a URL, workspace file, or allowlisted app on the local macOS desktop. Controlled by `CODEXBRIDGE_DESKTOP_MODE` and `CODEXBRIDGE_DESKTOP_APPS`.
 - `show_changes` — one review-oriented summary with git status, diff stats, and optional diff.
 - `operation_journal` — read recent bounded operation events for recovery and audit.
 - `read_handoff` — read `.ai-bridge` files.
@@ -1098,6 +1100,19 @@ CODEXBRIDGE_SSH_PROFILES='{"staging":{"host":"staging.example.com","user":"deplo
 Use `ssh_profiles` to inspect redacted profile metadata, then call `ssh_exec` with `dry_run: true` before a real remote command. Safe mode allows status and log-oriented commands such as `pwd`, `hostname`, `uptime`, `df -h`, `git status`, `docker ps`, `docker logs --tail`, `systemctl status`, and bounded `journalctl -u ... -n ... --no-pager`.
 
 `CODEXBRIDGE_SSH_MODE=off` disables SSH execution. `CODEXBRIDGE_SSH_MODE=full` allows broader non-interactive commands, but high-risk commands return an approval-required policy result unless the user explicitly approves and the tool call sets `approved: true`.
+
+## Desktop modes
+
+Desktop open is macOS-only and `CODEXBRIDGE_DESKTOP_MODE=off` by default. Enable it with `CODEXBRIDGE_DESKTOP_MODE=safe` to let `desktop_open` launch local targets through the macOS `open` command:
+
+```bash
+CODEXBRIDGE_DESKTOP_MODE=safe
+CODEXBRIDGE_DESKTOP_APPS='TextEdit,Safari'
+```
+
+Call `desktop_status` to see the current mode and capabilities, then call `desktop_open` with `dry_run: true` to preview the resolved `open` argv before launching. Safe mode allows only `http`/`https` URLs, files inside the workspace (resolved through the same path guard as `read`/`write`), and apps listed in `CODEXBRIDGE_DESKTOP_APPS`; `javascript:`, `data:`, `file:`, out-of-workspace paths, and unlisted apps are denied.
+
+`CODEXBRIDGE_DESKTOP_MODE=full` allows opening any URL or app, but high-risk schemes return an approval-required policy result unless the tool call sets `approved: true`. On non-macOS platforms `desktop_open` fails cleanly with an unsupported-platform error.
 
 ### No-surprise shell mode
 

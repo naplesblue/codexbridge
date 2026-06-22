@@ -8,6 +8,7 @@ import { repoTree, readTextFile, writeTextFile, editTextFile, ensureAiBridge } f
 import { searchWorkspace } from "./searchOps.js";
 import { runBash } from "./bashOps.js";
 import { listSshProfiles, runSshCommand, type SshExecResult } from "./sshOps.js";
+import { desktopOpen, desktopStatus } from "./desktopOps.js";
 import { gitDiff, gitLog, gitStatus } from "./gitOps.js";
 import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./workspaceOps.js";
 import { buildProContext, exportProContext } from "./proContext.js";
@@ -266,6 +267,8 @@ const STANDARD_TOOL_NAMES = [
   "task_report",
   "ssh_profiles",
   "ssh_exec",
+  "desktop_status",
+  "desktop_open",
   "operation_journal",
   "read_handoff",
   "export_pro_context",
@@ -297,6 +300,8 @@ const FULL_TOOL_NAMES = [
   "bash",
   "ssh_profiles",
   "ssh_exec",
+  "desktop_status",
+  "desktop_open",
   "git_status",
   "git_diff",
   "show_changes",
@@ -756,6 +761,8 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         requireBashSession: config.requireBashSession,
         sshMode: config.sshMode,
         sshProfiles: Object.keys(config.sshProfiles).length,
+        desktopMode: config.desktopMode,
+        desktopApps: config.desktopApps,
         codexSessions: config.codexSessions,
         codexDir: config.codexDir,
         writeMode: config.writeMode,
@@ -1807,6 +1814,80 @@ export function createCodexBridgeServer(config: CodexBridgeConfig): McpServer {
         root: workspace.root,
         ...result
       });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "desktop_status",
+    {
+      title: "Desktop Status",
+      description: "Report the desktop-open mode and capabilities. Desktop control is macOS-only and configured via CODEXBRIDGE_DESKTOP_MODE and CODEXBRIDGE_DESKTOP_APPS.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Reading desktop status...",
+        "openai/toolInvocation/invoked": "Desktop status ready"
+      }
+    },
+    async () => {
+      const status = desktopStatus(config);
+      const caps = status.capabilities.length ? status.capabilities.join(", ") : "none";
+      const apps = status.apps.length ? status.apps.join(", ") : "none";
+      return textResult(
+        `# Desktop Status\n\nMode: ${status.mode}\nPlatform supported: ${status.platform_supported}\nCapabilities: ${caps}\nAllowed apps: ${apps}`,
+        { ...status }
+      );
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "desktop_open",
+    {
+      title: "Desktop Open",
+      description:
+        "Open a URL, a workspace file, or an allowlisted app on the local macOS desktop. Supports dry-run previews and safe/full policy. Safe mode allows only http/https URLs, files inside the workspace, and apps listed in CODEXBRIDGE_DESKTOP_APPS.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id used to resolve workspace_path targets and journal actual opens. Omit to use default workspace."),
+        target_type: z.enum(["url", "workspace_path", "app"]).describe("What to open: url, workspace_path (a file inside the workspace), or app (a macOS application name)."),
+        target: z.string().describe("The URL, workspace-relative file path, or application name to open."),
+        dry_run: z.boolean().optional().describe("Preview the open argv and policy decision without launching. Default: false."),
+        approved: z.boolean().optional().describe("Set true only after explicit user approval when full desktop policy returns ask.")
+      },
+      annotations: BASH_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Opening on desktop...",
+        "openai/toolInvocation/invoked": "Desktop open finished"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const targetType = args.target_type as "url" | "workspace_path" | "app";
+      const target = String(args.target ?? "");
+      const resolvedTarget = targetType === "workspace_path" ? guard.resolve(workspace, target).absPath : undefined;
+      const result = await desktopOpen(config, {
+        targetType,
+        target,
+        resolvedTarget,
+        dryRun: parseBool(args.dry_run, false),
+        approved: parseBool(args.approved, false)
+      });
+      if (!result.dry_run) {
+        await appendJournalEvent(config, guard, workspace, {
+          event: "desktop_open",
+          status: "ok",
+          command: `${result.target_type}: ${result.target}`,
+          paths: result.resolved_target ? [result.resolved_target] : undefined,
+          durationMs: result.durationMs ?? 0
+        });
+      }
+      const text = `# Desktop Open${result.dry_run ? " (dry run)" : ""}\n\nMode: ${result.mode}\nType: ${result.target_type}\nTarget: ${result.target}${result.resolved_target ? `\nResolved: ${result.resolved_target}` : ""}\nargv: ${result.argv.join(" ")}\nPolicy: ${result.policy.decision} (${result.policy.category})`;
+      return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result });
     }
   );
 

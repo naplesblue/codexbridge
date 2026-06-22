@@ -173,6 +173,8 @@ codexbridge start --bash-session main --require-bash-session
 
 需要远程运维时，可以通过 `CODEXBRIDGE_SSH_PROFILES` 配置固定 SSH profile，再用 `ssh_profiles` 查看脱敏配置，用 `ssh_exec` 先 `dry_run` 预览命令。SSH 只支持非交互命令，不处理密码、sudo prompt、scp/rsync 或长期远程 shell。
 
+桌面打开能力仅支持 macOS，默认 `CODEXBRIDGE_DESKTOP_MODE=off`。设为 `safe` 后，`desktop_open` 可通过 macOS `open` 命令打开本地目标：safe 模式仅允许 `http`/`https` 链接、工作区内的文件（走与 `read`/`write` 相同的路径守卫）以及 `CODEXBRIDGE_DESKTOP_APPS` 白名单里的应用。先用 `desktop_status` 查看模式，再用 `desktop_open` 加 `dry_run: true` 预览。`full` 模式放开更多目标，高风险项需 `approved: true` 才执行。
+
 ### 2. Handoff
 
 规划模式。ChatGPT 不直接写源码，只写入：

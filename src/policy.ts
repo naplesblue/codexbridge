@@ -1,4 +1,6 @@
-import type { CodexBridgeConfig, SshMode } from "./config.js";
+import type { CodexBridgeConfig, DesktopMode, SshMode } from "./config.js";
+
+export type DesktopTargetType = "url" | "workspace_path" | "app";
 
 export type PolicyDecisionKind = "allow" | "ask" | "deny";
 export type PolicyRisk = "low" | "medium" | "high";
@@ -233,6 +235,112 @@ export function decideSshCommandPolicy(mode: SshMode, command: string): PolicyDe
     reason: "Remote command matches the SSH safe allowlist.",
     category: "ssh-safe-command",
     risk: "low"
+  };
+}
+
+const DESKTOP_ALLOWED_URL_SCHEMES = ["http://", "https://"];
+const DESKTOP_BLOCKED_URL_SCHEMES = ["javascript:", "data:", "vbscript:", "file:"];
+
+export function decideDesktopOpenPolicy(
+  mode: DesktopMode,
+  targetType: DesktopTargetType,
+  target: string,
+  options: { appAllowlist?: string[] } = {}
+): PolicyDecision {
+  const value = target.trim();
+  if (!value) {
+    return {
+      decision: "deny",
+      reason: "desktop_open target is required.",
+      category: "desktop-empty",
+      risk: "low"
+    };
+  }
+  if (mode === "off") {
+    return {
+      decision: "deny",
+      reason: "Desktop open is disabled. Start with CODEXBRIDGE_DESKTOP_MODE=safe or CODEXBRIDGE_DESKTOP_MODE=full to enable it.",
+      category: "desktop-disabled",
+      risk: "low"
+    };
+  }
+
+  if (targetType === "url") {
+    const lower = value.toLowerCase();
+    const scheme = lower.includes(":") ? `${lower.slice(0, lower.indexOf(":"))}:` : value;
+    if (mode === "safe") {
+      if (!DESKTOP_ALLOWED_URL_SCHEMES.some((allowed) => lower.startsWith(allowed))) {
+        return {
+          decision: "deny",
+          reason:
+            `URL scheme is blocked in CODEXBRIDGE_DESKTOP_MODE=safe: ${scheme}\n` +
+            "Only http and https URLs are allowed in safe desktop mode.",
+          category: "desktop-url-scheme",
+          risk: "high"
+        };
+      }
+    } else if (DESKTOP_BLOCKED_URL_SCHEMES.some((blocked) => lower.startsWith(blocked))) {
+      return {
+        decision: "ask",
+        reason: `URL scheme ${scheme} requires explicit user approval even in full desktop mode.`,
+        category: "desktop-url-scheme",
+        risk: "high"
+      };
+    }
+    return {
+      decision: "allow",
+      reason: "URL open is within desktop policy.",
+      category: "desktop-url",
+      risk: mode === "full" ? "medium" : "low"
+    };
+  }
+
+  if (targetType === "app") {
+    if (mode === "full") {
+      return {
+        decision: "allow",
+        reason: "full desktop mode allows launching any app.",
+        category: "desktop-app-full",
+        risk: "high"
+      };
+    }
+    const allowlist = options.appAllowlist ?? [];
+    const allowed = allowlist.some((app) => app.toLowerCase() === value.toLowerCase());
+    if (!allowed) {
+      return {
+        decision: "deny",
+        reason:
+          `App is not in the desktop allowlist: ${value}\n` +
+          "Add it to CODEXBRIDGE_DESKTOP_APPS to allow launching it in safe desktop mode.",
+        category: "desktop-app-unlisted",
+        risk: "medium"
+      };
+    }
+    return {
+      decision: "allow",
+      reason: "App matches the desktop allowlist.",
+      category: "desktop-app",
+      risk: "low"
+    };
+  }
+
+  // workspace_path: path resolution and workspace guarding are enforced by the caller.
+  if (/[\n\r;&|<>`$]/.test(value)) {
+    return {
+      decision: "deny",
+      reason: "Workspace path contains unsupported shell metacharacters.",
+      category: "desktop-path",
+      risk: "medium"
+    };
+  }
+  return {
+    decision: "allow",
+    reason:
+      mode === "full"
+        ? "full desktop mode allows opening workspace files."
+        : "Workspace file open is within desktop policy.",
+    category: "desktop-path",
+    risk: mode === "full" ? "medium" : "low"
   };
 }
 

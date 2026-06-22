@@ -8,6 +8,7 @@ export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
 export type SshMode = "off" | "safe" | "full";
+export type DesktopMode = "off" | "safe" | "full";
 
 export interface SshProfileConfig {
   name: string;
@@ -33,6 +34,8 @@ export interface CodexBridgeConfig {
   requireBashSession: boolean;
   sshMode: SshMode;
   sshProfiles: Record<string, SshProfileConfig>;
+  desktopMode: DesktopMode;
+  desktopApps: string[];
   codexSessions: CodexSessionsMode;
   codexDir: string;
   writeMode: WriteMode;
@@ -164,6 +167,29 @@ function bashModeFrom(value: string | undefined): BashMode {
 function sshModeFrom(value: string | undefined): SshMode {
   if (value === "off" || value === "safe" || value === "full") return value;
   return "safe";
+}
+
+function desktopModeFrom(value: string | undefined): DesktopMode {
+  if (value === "off" || value === "safe" || value === "full") return value;
+  return "off";
+}
+
+function desktopAppsFrom(value: string | undefined): string[] {
+  if (!value?.trim()) return [];
+  const seen = new Set<string>();
+  const apps: string[] = [];
+  for (const raw of value.split(/[,;]/)) {
+    const name = raw.trim();
+    if (!name) continue;
+    if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}$/.test(name)) {
+      throw new Error(`Invalid CODEXBRIDGE_DESKTOP_APPS entry: ${name}. Use app names like TextEdit or "Visual Studio Code".`);
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    apps.push(name);
+  }
+  return apps;
 }
 
 function bashTranscriptFrom(value: string | undefined): BashTranscriptMode {
@@ -345,6 +371,8 @@ export function loadConfig(argv = process.argv.slice(2)): CodexBridgeConfig {
     requireBashSession,
     sshMode: sshModeFrom(process.env.CODEXBRIDGE_SSH_MODE),
     sshProfiles: sshProfilesFrom(process.env.CODEXBRIDGE_SSH_PROFILES),
+    desktopMode: desktopModeFrom(process.env.CODEXBRIDGE_DESKTOP_MODE),
+    desktopApps: desktopAppsFrom(process.env.CODEXBRIDGE_DESKTOP_APPS),
     codexSessions: codexSessionsFrom(codexSessionsArg ?? process.env.CODEXBRIDGE_CODEX_SESSIONS),
     codexDir: expandHome(codexDirArg || process.env.CODEXBRIDGE_CODEX_DIR || path.join(os.homedir(), ".codex")),
     writeMode: writeModeFrom(writeArg ?? process.env.CODEXBRIDGE_WRITE_MODE),
