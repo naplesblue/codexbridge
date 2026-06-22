@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -173,7 +174,7 @@ await client.request('initialize', {
 client.notify('notifications/initialized');
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
-for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+for (const expected of ['server_config', 'codexbridge_self_test', 'codexbridge_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'task_resume', 'bash', 'ssh_profiles', 'ssh_exec', 'git_status', 'git_diff', 'show_changes', 'operation_journal', 'read_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
   if (!toolNames.includes(expected)) throw new Error(`missing tool: ${expected}`);
 }
 const toolCardUri = 'ui://widget/codexbridge-tool-card-v1.html';
@@ -479,6 +480,69 @@ const taskReport = await client.request('tools/call', { name: 'task_report', arg
 if (!taskReport.structuredContent.changed || !taskReport.structuredContent.events?.some?.((event) => event.event === 'task_verify')) {
   throw new Error(`task_report did not summarize task state and journal: ${JSON.stringify(taskReport.structuredContent)}`);
 }
+
+// --- Task resume layer (Phase 4) ---
+const planWithSteps = await client.request('tools/call', {
+  name: 'task_plan',
+  arguments: {
+    workspace_id: ws,
+    goal: 'Resume demo: update demo text',
+    target_paths: ['demo.txt'],
+    plan_steps: ['Read demo.txt', 'Edit omega to OMEGA', 'Verify with cat']
+  }
+});
+if (!planWithSteps.structuredContent.task_id || !String(planWithSteps.structuredContent.task_id).startsWith('task_')) {
+  throw new Error(`task_plan did not persist a task_id: ${JSON.stringify(planWithSteps.structuredContent)}`);
+}
+const persistedTaskId = planWithSteps.structuredContent.task_id;
+const currentTaskFile = path.join(tmp, '.ai-bridge', 'current-task.json');
+const persisted = JSON.parse(await fs.readFile(currentTaskFile, 'utf8'));
+if (persisted.goal !== 'Resume demo: update demo text' || persisted.plan_steps.length !== 3 || persisted.status !== 'in_progress') {
+  throw new Error(`current-task.json missing expected fields: ${JSON.stringify(persisted)}`);
+}
+
+const briefWithTask = await client.request('tools/call', { name: 'task_brief', arguments: { workspace_id: ws, goal: 'check active task' } });
+if (briefWithTask.structuredContent.active_task?.task_id !== persistedTaskId) {
+  throw new Error(`task_brief did not surface active_task: ${JSON.stringify(briefWithTask.structuredContent.active_task)}`);
+}
+
+const resume = await client.request('tools/call', { name: 'task_resume', arguments: { workspace_id: ws } });
+if (!resume.structuredContent.active || resume.structuredContent.task_id !== persistedTaskId) {
+  throw new Error(`task_resume did not return active task: ${JSON.stringify(resume.structuredContent)}`);
+}
+if (resume.structuredContent.plan_steps?.length !== 3 || !Array.isArray(resume.structuredContent.events)) {
+  throw new Error(`task_resume missing plan/events: ${JSON.stringify(resume.structuredContent)}`);
+}
+
+const completed = await client.request('tools/call', { name: 'task_report', arguments: { workspace_id: ws, include_diff: false, complete: true } });
+if (completed.structuredContent.archived_task?.status !== 'complete') {
+  throw new Error(`task_report complete did not archive task: ${JSON.stringify(completed.structuredContent.archived_task)}`);
+}
+if (existsSync(currentTaskFile)) {
+  throw new Error('current-task.json should be removed after task_report complete');
+}
+const archiveFile = path.join(tmp, '.ai-bridge', 'tasks', `${persistedTaskId}.json`);
+const archived = JSON.parse(await fs.readFile(archiveFile, 'utf8'));
+if (archived.status !== 'complete' || !archived.completed_at) {
+  throw new Error(`archived task file wrong: ${JSON.stringify(archived)}`);
+}
+
+const resumeAfter = await client.request('tools/call', { name: 'task_resume', arguments: { workspace_id: ws } });
+if (resumeAfter.structuredContent.active !== false) {
+  throw new Error(`task_resume should report no active task after complete: ${JSON.stringify(resumeAfter.structuredContent)}`);
+}
+
+// Starting a new task while one is in_progress archives the prior as abandoned
+await client.request('tools/call', { name: 'task_plan', arguments: { workspace_id: ws, goal: 'First task', plan_steps: ['step a'] } });
+const firstId = JSON.parse(await fs.readFile(currentTaskFile, 'utf8')).task_id;
+await client.request('tools/call', { name: 'task_plan', arguments: { workspace_id: ws, goal: 'Second task', plan_steps: ['step b'] } });
+const abandoned = JSON.parse(await fs.readFile(path.join(tmp, '.ai-bridge', 'tasks', `${firstId}.json`), 'utf8'));
+if (abandoned.status !== 'abandoned') {
+  throw new Error(`prior task should be archived as abandoned: ${JSON.stringify(abandoned)}`);
+}
+// Clean up so later mode checks start without an active task lingering
+await client.request('tools/call', { name: 'task_report', arguments: { workspace_id: ws, include_diff: false, complete: true } });
+
 const exported = await client.request('tools/call', { name: 'export_pro_context', arguments: { workspace_id: ws, selected_paths: ['demo.txt'], max_files: 4, max_total_bytes: 80000 } });
 if (exported.structuredContent.path !== '.ai-bridge/pro-context.md') throw new Error('export_pro_context wrote an unexpected path');
 await fs.stat(path.join(tmp, '.ai-bridge', 'pro-context.md'));
@@ -581,6 +645,31 @@ const modeClient = new McpStdioClient('node', args, {
 
 await assertToolMode('', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'read', 'write', 'edit', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'bash', 'ssh_profiles', 'ssh_exec', 'show_changes', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexbridge_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
 await assertToolMode('minimal', ['server_config', 'codexbridge_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'bash', 'show_changes'], ['tree', 'search', 'load_skill', 'preview_change_set', 'apply_change_set', 'preview_rollback_change_set', 'approval_review', 'task_brief', 'task_plan', 'task_verify', 'task_report', 'ssh_profiles', 'ssh_exec', 'operation_journal', 'read_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
+
+// Fresh server process must still find the active task on disk
+const resumeRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexbridge-resume-'));
+await fs.writeFile(path.join(resumeRoot, 'demo.txt'), 'alpha\n', 'utf8');
+const planClient = new McpStdioClient('node', ['dist/stdio.js', '--root', resumeRoot, '--allow-root', resumeRoot], {
+  cwd: path.resolve('.'),
+  env: { ...process.env, CODEXBRIDGE_ROOT: resumeRoot, CODEXBRIDGE_ALLOWED_ROOTS: resumeRoot }
+});
+await planClient.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'codexbridge-resume-plan', version: '0.1.0' } });
+planClient.notify('notifications/initialized');
+const planRes = await planClient.request('tools/call', { name: 'task_plan', arguments: { goal: 'Cross-process resume', plan_steps: ['do x'] } });
+const crossId = planRes.structuredContent.task_id;
+planClient.close();
+
+const resumeClient = new McpStdioClient('node', ['dist/stdio.js', '--root', resumeRoot, '--allow-root', resumeRoot], {
+  cwd: path.resolve('.'),
+  env: { ...process.env, CODEXBRIDGE_ROOT: resumeRoot, CODEXBRIDGE_ALLOWED_ROOTS: resumeRoot }
+});
+await resumeClient.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'codexbridge-resume-read', version: '0.1.0' } });
+resumeClient.notify('notifications/initialized');
+const crossResume = await resumeClient.request('tools/call', { name: 'task_resume', arguments: {} });
+if (!crossResume.structuredContent.active || crossResume.structuredContent.task_id !== crossId) {
+  throw new Error(`fresh process did not resume task: ${JSON.stringify(crossResume.structuredContent)}`);
+}
+resumeClient.close();
 
 const standardCodexSessionsClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp], {
   cwd: path.resolve('.'),
