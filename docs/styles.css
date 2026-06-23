@@ -339,6 +339,18 @@ p {
   white-space: pre;
 }
 
+.fine-print {
+  margin: -6px 0 0;
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fine-print code {
+  color: #cbd5e1;
+}
+
 .copy-button {
   min-height: 34px;
   border: 0;

@@ -1,5 +1,5 @@
 {
-  "name": "codexbridge",
+  "name": "@naplesblue/codexbridge",
   "version": "0.28.5",
   "description": "A local MCP/App SDK-style bridge that lets ChatGPT inspect, edit, verify, and hand off work inside a local dev workspace.",
   "type": "module",

@@ -395,7 +395,7 @@ function onboardingPage(config: CodexBridgeConfig): string {
   const rootArg = shellQuote(config.defaultRoot);
   const sessionArg = shellQuote(config.bashSessionId || "main");
   const githubUrl = "https://github.com/naplesblue/codexbridge";
-  const npmUrl = "https://www.npmjs.com/package/codexbridge";
+  const npmUrl = "https://www.npmjs.com/package/@naplesblue/codexbridge";
   const docsUrl = "https://github.com/naplesblue/codexbridge#readme";
   const chatgptUrl = "https://chatgpt.com/#settings/Connectors";
   const controls = [

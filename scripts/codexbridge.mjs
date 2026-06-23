@@ -15,7 +15,7 @@ function usage() {
   console.log(`CodexBridge easy launcher
 
 Usage:
-  npm install -g codexbridge
+  npm install -g @naplesblue/codexbridge
   codexbridge setup
   codexbridge start
   codexbridge start --root /path/to/repo

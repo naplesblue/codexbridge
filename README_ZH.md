@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/codexbridge"><img alt="npm" src="https://img.shields.io/npm/v/codexbridge?style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/@naplesblue/codexbridge"><img alt="npm" src="https://img.shields.io/npm/v/%40naplesblue%2Fcodexbridge?style=flat-square"></a>
   <a href="https://github.com/naplesblue/codexbridge/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/naplesblue/codexbridge/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/naplesblue/codexbridge/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/naplesblue/codexbridge?style=flat-square"></a>
   <a href="https://naplesblue.github.io/codexbridge/zh.html"><img alt="中文站点" src="https://img.shields.io/badge/site-%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-67e8f9?style=flat-square"></a>
@@ -22,7 +22,7 @@
   ·
   <a href="https://github.com/naplesblue/codexbridge">GitHub 点星</a>
   ·
-  <a href="https://www.npmjs.com/package/codexbridge">npm</a>
+  <a href="https://www.npmjs.com/package/@naplesblue/codexbridge">npm</a>
   ·
   <a href="DOMAIN_SETUP.md">稳定 URL 指南</a>
   ·
@@ -38,8 +38,10 @@ CodexBridge 需要 Node.js 20+，以及能使用 Apps / Developer Mode 的 ChatG
 先安装 CLI：
 
 ```bash
-npm install -g codexbridge
+npm install -g @naplesblue/codexbridge
 ```
+
+请使用这个 scoped 包名。未 scoped 的 `codexbridge` npm 包名属于另一个项目，`npm install -g codexbridge` 会安装到错误的 CLI。
 
 进入你想让 ChatGPT 工作的仓库，然后运行 setup：
 
@@ -111,7 +113,7 @@ ChatGPT 里每个 CodexBridge 工具都可以显示紧凑 v9 卡片：server con
 不想全局安装时，也可以用：
 
 ```bash
-npx codexbridge@latest start --root /absolute/path/to/your/repo
+npx -y -p @naplesblue/codexbridge codexbridge start --root /absolute/path/to/your/repo
 ```
 
 但普通用户更推荐全局安装，这样命令就是固定的 `codexbridge setup` 和 `codexbridge start`。

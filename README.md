@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/codexbridge"><img alt="npm" src="https://img.shields.io/npm/v/codexbridge?style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/@naplesblue/codexbridge"><img alt="npm" src="https://img.shields.io/npm/v/%40naplesblue%2Fcodexbridge?style=flat-square"></a>
   <a href="https://github.com/naplesblue/codexbridge/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/naplesblue/codexbridge/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/naplesblue/codexbridge/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/naplesblue/codexbridge?style=flat-square"></a>
   <a href="https://naplesblue.github.io/codexbridge/"><img alt="Website" src="https://img.shields.io/badge/site-GitHub%20Pages-67e8f9?style=flat-square"></a>
@@ -24,7 +24,7 @@
   ·
   <a href="https://github.com/naplesblue/codexbridge">Star on GitHub</a>
   ·
-  <a href="https://www.npmjs.com/package/codexbridge">npm</a>
+  <a href="https://www.npmjs.com/package/@naplesblue/codexbridge">npm</a>
   ·
   <a href="DOMAIN_SETUP.md">Stable URL guide</a>
   ·
@@ -40,8 +40,10 @@ CodexBridge requires Node.js 20+ and a ChatGPT Plus or Pro account with Apps / D
 Install the CLI:
 
 ```bash
-npm install -g codexbridge
+npm install -g @naplesblue/codexbridge
 ```
+
+Use the scoped package name. The unscoped `codexbridge` npm name is owned by another project, so `npm install -g codexbridge` installs the wrong CLI.
 
 Then run setup inside the repo you want ChatGPT to work on:
 
@@ -68,7 +70,7 @@ CodexBridge began as a fork of CodexPro and is now maintained as a localized, in
 
 | Need | Use |
 | --- | --- |
-| Fast first setup | `npm install -g codexbridge`, then `codexbridge setup` |
+| Fast first setup | `npm install -g @naplesblue/codexbridge`, then `codexbridge setup` |
 | Daily start | `codexbridge start` from the same repo |
 | Stable ChatGPT URL | ngrok free dev domain or Cloudflare named tunnel |
 | Smallest tool surface | default `CODEXBRIDGE_TOOL_MODE=standard` |
@@ -286,7 +288,7 @@ After upgrading or changing widget metadata, open the CodexBridge app settings i
 No-install fallback:
 
 ```bash
-npx codexbridge@latest start --root /absolute/path/to/your/repo
+npx -y -p @naplesblue/codexbridge codexbridge start --root /absolute/path/to/your/repo
 ```
 
 From source:

@@ -155,8 +155,8 @@ const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--al
   }
 });
 
-if (packageJson.name !== 'codexbridge') {
-  throw new Error(`package name should be codexbridge, got ${packageJson.name}`);
+if (packageJson.name !== '@naplesblue/codexbridge') {
+  throw new Error(`package name should be @naplesblue/codexbridge, got ${packageJson.name}`);
 }
 for (const expectedBin of ['codexbridge', 'codexbridge-mcp', 'codexbridge-mcp-http']) {
   if (!packageJson.bin?.[expectedBin]) throw new Error(`package bin missing ${expectedBin}`);

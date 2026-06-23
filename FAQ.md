@@ -15,8 +15,10 @@ Account access and model tool support are separate. A Plus or Pro account can ha
 Install globally once:
 
 ```bash
-npm install -g codexbridge
+npm install -g @naplesblue/codexbridge
 ```
+
+Do not install the unscoped `codexbridge` package. That npm name belongs to a different CLI, so the scoped package is the canonical install path for this project.
 
 Then run setup from the repo you want ChatGPT to work on:
 
@@ -30,7 +32,7 @@ After setup, daily startup from that same repo is:
 codexbridge start
 ```
 
-`npx codexbridge@latest start` still works as a no-install fallback, but the global install is easier for normal users.
+`npx -y -p @naplesblue/codexbridge codexbridge start` still works as a no-install fallback, but the global install is easier for normal users.
 
 ## What do I enable in ChatGPT?
 
